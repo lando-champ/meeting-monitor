@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     # Server
     HOST: str = "0.0.0.0"
     PORT: int = 8000
+
+    # Jitsi (self-hosted)
+    JITSI_DOMAIN: str = "https://meet.jit.si"
     
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod

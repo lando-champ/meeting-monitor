@@ -1,279 +1,209 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel
-from app.core.database import get_database
-from app.core.dependencies import get_current_user, verify_project_membership
-from app.models.meeting import Meeting, MeetingCreate, MeetingUpdate
-from app.models.user import User
-from bson import ObjectId
+"""
+Meeting lifecycle APIs (Phase 1).
+- POST /meetings/start-instant: start an instant meeting (manager only).
+- POST /meetings/schedule: schedule a meeting (manager only).
+- GET /meetings/{id}: get meeting by ID (authenticated).
+"""
+import uuid
 from datetime import datetime
+from fastapi import APIRouter, Depends, HTTPException, status
+from bson import ObjectId
 
-class MeetingSummaryUpdate(BaseModel):
-    summary: Optional[Dict[str, Any]] = None
-    action_items: Optional[List[str]] = None
-    decisions: Optional[List[str]] = None
+from app.core.config import settings
+from app.core.database import get_database
+from app.core.dependencies import (
+    get_current_active_user,
+    require_manager,
+    verify_project_membership,
+)
+from app.models.meeting import (
+    Meeting,
+    MeetingCreateInstant,
+    MeetingCreateSchedule,
+    StartInstantResponse,
+)
+from app.models.user import User
 
 router = APIRouter()
 
-@router.post("", response_model=Meeting, status_code=status.HTTP_201_CREATED)
-async def create_meeting(meeting_data: MeetingCreate, current_user: User = Depends(get_current_user)):
-    """Create a new meeting"""
-    db = await get_database()
-    
-    # Verify project access
-    await verify_project_membership(meeting_data.project_id, current_user)
-    
-    meeting_dict = meeting_data.model_dump()
-    meeting_dict["status"] = "scheduled"
-    meeting_dict["started_at"] = None
-    meeting_dict["ended_at"] = None
-    meeting_dict["created_at"] = datetime.utcnow()
-    meeting_dict["updated_at"] = datetime.utcnow()
-    
-    result = await db.meetings.insert_one(meeting_dict)
-    meeting_dict["id"] = str(result.inserted_id)
-    return Meeting(**meeting_dict)
 
-@router.get("", response_model=List[Meeting])
-async def list_meetings(
-    project_id: Optional[str] = None,
-    status: Optional[str] = None,
-    current_user: User = Depends(get_current_user)
-):
-    """List meetings"""
-    db = await get_database()
-    query = {}
-    
-    if project_id:
-        query["project_id"] = project_id
-        # Verify access (will raise exception if not member)
-        await verify_project_membership(project_id, current_user)
-    
-    if status:
-        query["status"] = status
-    
-    meetings = await db.meetings.find(query).sort("start_time", -1).to_list(length=100)
-    return [Meeting(id=str(m["_id"]), **{k: v for k, v in m.items() if k != "_id"}) for m in meetings]
+def _generate_room_name(project_id: str) -> str:
+    """Generate unique Jitsi room name: mm-{projectId}-{uuid}."""
+    return f"mm-{project_id}-{uuid.uuid4().hex[:12]}"
 
-@router.get("/{meeting_id}", response_model=Meeting)
-async def get_meeting(meeting_id: str, current_user: User = Depends(get_current_user)):
-    """Get meeting by ID"""
-    db = await get_database()
-    meeting = await db.meetings.find_one({"_id": ObjectId(meeting_id)})
-    
-    if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting not found")
-    
-    # Verify project access
-    await verify_project_membership(meeting["project_id"], current_user)
-    
-    return Meeting(id=str(meeting["_id"]), **{k: v for k, v in meeting.items() if k != "_id"})
 
-@router.patch("/{meeting_id}", response_model=Meeting)
-async def update_meeting(
-    meeting_id: str,
-    meeting_update: MeetingUpdate,
-    current_user: User = Depends(get_current_user)
-):
-    """Update meeting"""
-    db = await get_database()
-    meeting = await db.meetings.find_one({"_id": ObjectId(meeting_id)})
-    
-    if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting not found")
-    
-    # Verify project access
-    await verify_project_membership(meeting["project_id"], current_user)
-    
-    update_data = meeting_update.model_dump(exclude_unset=True)
-    update_data["updated_at"] = datetime.utcnow()
-    
-    await db.meetings.update_one(
-        {"_id": ObjectId(meeting_id)},
-        {"$set": update_data}
+def _build_jitsi_url(room_name: str) -> str:
+    """Build full Jitsi meeting URL from configured domain."""
+    base = settings.JITSI_DOMAIN.rstrip("/")
+    return f"{base}/{room_name}"
+
+
+def _doc_to_meeting(doc: dict) -> Meeting:
+    """Map MongoDB meeting document to Meeting model."""
+    return Meeting(
+        id=str(doc["_id"]),
+        project_id=doc["project_id"],
+        room_name=doc["room_name"],
+        type=doc["type"],
+        status=doc["status"],
+        start_time=doc.get("start_time"),
+        created_by=doc["created_by"],
+        created_at=doc["created_at"],
     )
-    
-    updated = await db.meetings.find_one({"_id": ObjectId(meeting_id)})
-    return Meeting(id=str(updated["_id"]), **{k: v for k, v in updated.items() if k != "_id"})
 
-@router.post("/{meeting_id}/start", response_model=Meeting)
-async def start_meeting(meeting_id: str, current_user: User = Depends(get_current_user)):
-    """Start a meeting"""
-    db = await get_database()
-    meeting = await db.meetings.find_one({"_id": ObjectId(meeting_id)})
-    
-    if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting not found")
-    
-    # Verify project access
-    await verify_project_membership(meeting["project_id"], current_user)
-    
-    await db.meetings.update_one(
-        {"_id": ObjectId(meeting_id)},
-        {
-            "$set": {
-                "status": "live",
-                "started_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow()
-            }
-        }
-    )
-    
-    updated = await db.meetings.find_one({"_id": ObjectId(meeting_id)})
-    return Meeting(id=str(updated["_id"]), **{k: v for k, v in updated.items() if k != "_id"})
 
-@router.post("/{meeting_id}/end", response_model=Meeting)
-async def end_meeting(meeting_id: str, current_user: User = Depends(get_current_user)):
-    """End a meeting (triggers automation)"""
-    db = await get_database()
-    meeting = await db.meetings.find_one({"_id": ObjectId(meeting_id)})
-    
-    if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting not found")
-    
-    # Verify project access
-    await verify_project_membership(meeting["project_id"], current_user)
-    
-    await db.meetings.update_one(
-        {"_id": ObjectId(meeting_id)},
-        {
-            "$set": {
-                "status": "ended",
-                "ended_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow()
-            }
-        }
-    )
-    
-    # TODO: Trigger automation (transcript processing, summary generation, task creation)
-    # This will be implemented in Step 7
-    
-    updated = await db.meetings.find_one({"_id": ObjectId(meeting_id)})
-    return Meeting(id=str(updated["_id"]), **{k: v for k, v in updated.items() if k != "_id"})
-
-@router.get("/{meeting_id}/details")
-async def get_meeting_details(meeting_id: str, current_user: User = Depends(get_current_user)):
+@router.post(
+    "/start-instant",
+    response_model=StartInstantResponse,
+    response_model_by_alias=True,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        201: {"description": "Instant meeting started"},
+        400: {"description": "Invalid project ID"},
+        403: {"description": "Only managers can start instant meetings"},
+        404: {"description": "Project not found"},
+    },
+)
+async def start_instant_meeting(
+    body: MeetingCreateInstant,
+    current_user: User = Depends(require_manager),
+) -> StartInstantResponse:
     """
-    Get comprehensive meeting details including:
-    - Meeting info
-    - Attendance records
-    - Transcripts
-    - Related tasks
-    - Summary and action items
+    Start an instant meeting. Manager only.
+    Creates a meeting with type=instant, status=live, and returns the Jitsi URL.
     """
     db = await get_database()
-    meeting = await db.meetings.find_one({"_id": ObjectId(meeting_id)})
-    
-    if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting not found")
-    
-    # Verify project access
-    await verify_project_membership(meeting["project_id"], current_user)
-    
-    # Get attendance records
-    attendance_records = await db.attendance.find({
-        "meeting_id": meeting_id
-    }).sort("joined_at", 1).to_list(length=100)
-    
-    # Get user info for attendance
-    user_ids = list(set(a["user_id"] for a in attendance_records))
-    users = {}
-    if user_ids:
-        user_records = await db.users.find({
-            "_id": {"$in": [ObjectId(uid) for uid in user_ids]}
-        }).to_list(length=100)
-        users = {
-            str(u["_id"]): {
-                "id": str(u["_id"]),
-                "name": u.get("name", "Unknown"),
-                "email": u.get("email", ""),
-                "avatar": u.get("avatar")
-            }
-            for u in user_records
-        }
-    
-    # Format attendance with user info
-    attendance_list = []
-    for a in attendance_records:
-        user_info = users.get(a["user_id"], {})
-        attendance_list.append({
-            "id": str(a["_id"]),
-            "user": user_info,
-            "joined_at": a.get("joined_at"),
-            "left_at": a.get("left_at"),
-            "duration": a.get("duration")
-        })
-    
-    # Get transcripts
-    transcripts = await db.transcripts.find({
-        "meeting_id": meeting_id
-    }).sort("timestamp", 1).to_list(length=10000)
-    
-    # Format transcripts with user info
-    transcript_list = []
-    for t in transcripts:
-        user_info = users.get(t["user_id"], {})
-        transcript_list.append({
-            "id": str(t["_id"]),
-            "user": user_info,
-            "text": t.get("text", ""),
-            "timestamp": t.get("timestamp")
-        })
-    
-    # Get related tasks
-    tasks = await db.tasks.find({
-        "source_meeting_id": meeting_id
-    }).sort("created_at", -1).to_list(length=100)
-    
-    task_list = []
-    for t in tasks:
-        assignee_info = None
-        if t.get("assignee_id"):
-            assignee_info = users.get(t["assignee_id"])
-        task_list.append({
-            "id": str(t["_id"]),
-            "title": t.get("title", ""),
-            "description": t.get("description"),
-            "status": t.get("status"),
-            "priority": t.get("priority"),
-            "assignee": assignee_info,
-            "due_date": t.get("due_date"),
-            "created_at": t.get("created_at")
-        })
-    
-    return {
-        "meeting": Meeting(id=str(meeting["_id"]), **{k: v for k, v in meeting.items() if k != "_id"}),
-        "attendance": attendance_list,
-        "transcripts": transcript_list,
-        "tasks": task_list,
-        "summary": meeting.get("summary"),
-        "action_items": meeting.get("action_items", []),
-        "decisions": meeting.get("decisions", [])
+
+    # Validate project_id and ensure user has access
+    try:
+        ObjectId(body.project_id)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid project ID",
+        )
+    await verify_project_membership(body.project_id, current_user)
+
+    room_name = _generate_room_name(body.project_id)
+    now = datetime.utcnow()
+
+    meeting_doc = {
+        "project_id": body.project_id,
+        "room_name": room_name,
+        "type": "instant",
+        "status": "live",
+        "start_time": now,
+        "created_by": current_user.id,
+        "created_at": now,
     }
 
-@router.patch("/{meeting_id}/summary", response_model=Meeting)
-async def update_meeting_summary(
-    meeting_id: str,
-    summary_update: MeetingSummaryUpdate,
-    current_user: User = Depends(get_current_user)
-):
-    """Update meeting summary, action items, and decisions"""
-    db = await get_database()
-    meeting = await db.meetings.find_one({"_id": ObjectId(meeting_id)})
-    
-    if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting not found")
-    
-    # Verify project access
-    await verify_project_membership(meeting["project_id"], current_user)
-    
-    update_data = summary_update.model_dump(exclude_unset=True)
-    update_data["updated_at"] = datetime.utcnow()
-    
-    await db.meetings.update_one(
-        {"_id": ObjectId(meeting_id)},
-        {"$set": update_data}
+    try:
+        result = await db.meetings.insert_one(meeting_doc)
+    except Exception as e:
+        if "duplicate key" in str(e).lower() or "E11000" in str(e):
+            # Collision on room_name; retry once with new name
+            room_name = _generate_room_name(body.project_id)
+            meeting_doc["room_name"] = room_name
+            result = await db.meetings.insert_one(meeting_doc)
+        else:
+            raise
+
+    meeting_id = str(result.inserted_id)
+    jitsi_url = _build_jitsi_url(room_name)
+
+    return StartInstantResponse(
+        meeting_id=meeting_id,
+        room_name=room_name,
+        jitsi_url=jitsi_url,
     )
-    
-    updated = await db.meetings.find_one({"_id": ObjectId(meeting_id)})
-    return Meeting(id=str(updated["_id"]), **{k: v for k, v in updated.items() if k != "_id"})
+
+
+@router.post(
+    "/schedule",
+    response_model=Meeting,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        201: {"description": "Meeting scheduled"},
+        400: {"description": "Invalid project ID or start_time"},
+        403: {"description": "Only managers can schedule meetings"},
+        404: {"description": "Project not found"},
+    },
+)
+async def schedule_meeting(
+    body: MeetingCreateSchedule,
+    current_user: User = Depends(require_manager),
+) -> Meeting:
+    """
+    Schedule a meeting. Manager only.
+    Creates a meeting with type=scheduled, status=scheduled.
+    """
+    db = await get_database()
+
+    try:
+        ObjectId(body.project_id)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid project ID",
+        )
+    await verify_project_membership(body.project_id, current_user)
+
+    room_name = _generate_room_name(body.project_id)
+    now = datetime.utcnow()
+
+    meeting_doc = {
+        "project_id": body.project_id,
+        "room_name": room_name,
+        "type": "scheduled",
+        "status": "scheduled",
+        "start_time": body.start_time,
+        "created_by": current_user.id,
+        "created_at": now,
+    }
+
+    try:
+        result = await db.meetings.insert_one(meeting_doc)
+    except Exception as e:
+        if "duplicate key" in str(e).lower() or "E11000" in str(e):
+            room_name = _generate_room_name(body.project_id)
+            meeting_doc["room_name"] = room_name
+            result = await db.meetings.insert_one(meeting_doc)
+        else:
+            raise
+
+    meeting_doc["_id"] = result.inserted_id
+    return _doc_to_meeting(meeting_doc)
+
+
+@router.get(
+    "/{meeting_id}",
+    response_model=Meeting,
+    responses={
+        200: {"description": "Meeting details"},
+        404: {"description": "Meeting not found"},
+    },
+)
+async def get_meeting(
+    meeting_id: str,
+    current_user: User = Depends(get_current_active_user),
+) -> Meeting:
+    """Get meeting by ID. User must be a member of the meeting's project."""
+    db = await get_database()
+
+    try:
+        oid = ObjectId(meeting_id)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid meeting ID",
+        )
+
+    meeting = await db.meetings.find_one({"_id": oid})
+    if not meeting:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Meeting not found",
+        )
+
+    await verify_project_membership(meeting["project_id"], current_user)
+    return _doc_to_meeting(meeting)

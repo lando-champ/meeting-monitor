@@ -17,8 +17,12 @@ class CORSPreflightMiddleware:
         if scope["method"] != "OPTIONS":
             await self.app(scope, receive, send)
             return
-        origin = next((v for k, v in scope.get("headers", []) if k == b"origin"), b"").decode("utf-8") or "http://localhost:5173"
-        allow_origin = origin if origin in self.allow_origins else (self.allow_origins[0] if self.allow_origins else origin)
+        origin = next((v for k, v in scope.get("headers", []) if k == b"origin"), b"").decode("utf-8") or ""
+        # Allow request origin if in list, or if it's a localhost/127.0.0.1 origin (dev)
+        if origin and (origin in self.allow_origins or origin.startswith(("http://localhost:", "http://127.0.0.1:"))):
+            allow_origin = origin
+        else:
+            allow_origin = self.allow_origins[0] if self.allow_origins else (origin or "http://localhost:8080")
         headers = [
             (b"access-control-allow-origin", allow_origin.encode()),
             (b"access-control-allow-methods", b"GET, POST, PUT, PATCH, DELETE, OPTIONS"),

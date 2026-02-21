@@ -36,22 +36,15 @@ COLLECTIONS: Dict[str, Dict[str, Any]] = {
     "meetings": {
         "fields": {
             "_id": "ObjectId",
-            "title": "string",
-            "description": "string (optional)",
             "project_id": "string (project._id, indexed)",
-            "jitsi_room": "string",
-            "meeting_link": "string (optional)",
-            "platform": "string (jitsi|gmeet|zoom|teams)",
+            "room_name": "string (unique, indexed)",
+            "type": "string (instant|scheduled)",
             "status": "string (scheduled|live|ended)",
-            "started_at": "datetime (optional)",
-            "ended_at": "datetime (optional)",
-            "summary": "object (optional, AI-generated)",
-            "action_items": "array (optional)",
-            "decisions": "array (optional)",
-            "created_at": "datetime",
-            "updated_at": "datetime"
+            "start_time": "datetime (optional)",
+            "created_by": "string (user._id)",
+            "created_at": "datetime"
         },
-        "indexes": ["project_id", "status", "start_time", "(project_id, status)"]
+        "indexes": ["room_name (unique)", "project_id", "status", "start_time", "(project_id, status)"]
     },
     "attendance": {
         "fields": {

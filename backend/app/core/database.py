@@ -36,7 +36,8 @@ async def create_indexes():
     await database.projects.create_index("members")
     await database.projects.create_index("project_type")
     
-    # Meetings collection indexes
+    # Meetings collection indexes (Phase 1 lifecycle schema)
+    await database.meetings.create_index("room_name", unique=True)
     await database.meetings.create_index("project_id")
     await database.meetings.create_index("status")
     await database.meetings.create_index("start_time")

@@ -11,8 +11,15 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Ensure CORS origins is always a list (env can mis-parse)
-_cors_origins = list(settings.CORS_ORIGINS) if settings.CORS_ORIGINS else ["http://localhost:5173", "http://localhost:8080", "http://127.0.0.1:5173", "http://127.0.0.1:8080"]
+# Ensure CORS origins is always a list; always include common dev origins (e.g. 8080) so register works
+_default_origins = [
+    "http://localhost:5173", "http://localhost:3000", "http://localhost:8080",
+    "http://127.0.0.1:5173", "http://127.0.0.1:3000", "http://127.0.0.1:8080",
+]
+_cors_origins = list(settings.CORS_ORIGINS) if settings.CORS_ORIGINS else _default_origins.copy()
+for origin in _default_origins:
+    if origin not in _cors_origins:
+        _cors_origins.append(origin)
 
 # CORS for actual GET/POST etc (this runs second = inner)
 app.add_middleware(

@@ -1,38 +1,53 @@
-from pydantic import BaseModel
+"""
+Meeting model for Jitsi-based meeting lifecycle (Phase 1).
+"""
+from pydantic import BaseModel, Field
 from typing import Literal, Optional
 from datetime import datetime
 from bson import ObjectId
 
+
 class MeetingBase(BaseModel):
-    title: str
-    description: Optional[str] = None
-    project_id: str  # workspace_id or class_id
-    jitsi_room: str
-    meeting_link: Optional[str] = None
-    platform: Literal["jitsi", "gmeet", "zoom", "teams"] = "jitsi"
+    """Base meeting fields."""
 
-class MeetingCreate(MeetingBase):
-    start_time: datetime
+    project_id: str = Field(..., description="Project ID (ObjectId string)")
+    room_name: str = Field(..., description="Unique Jitsi room name")
+    type: Literal["instant", "scheduled"] = Field(..., description="Meeting type")
+    status: Literal["scheduled", "live", "ended"] = Field(..., description="Meeting status")
+    start_time: Optional[datetime] = Field(None, description="Scheduled or actual start time")
+    created_by: str = Field(..., description="User ID of creator")
 
-class MeetingUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    status: Optional[Literal["scheduled", "live", "ended"]] = None
-    ended_at: Optional[datetime] = None
+
+class MeetingCreateSchedule(BaseModel):
+    """Request body for scheduling a meeting."""
+
+    project_id: str = Field(..., min_length=1, description="Project ID")
+    start_time: datetime = Field(..., description="Scheduled start time")
+
+
+class MeetingCreateInstant(BaseModel):
+    """Request body for starting an instant meeting (project_id only)."""
+
+    project_id: str = Field(..., min_length=1, description="Project ID")
+
 
 class Meeting(MeetingBase):
-    id: str
-    status: Literal["scheduled", "live", "ended"]
-    started_at: Optional[datetime] = None
-    ended_at: Optional[datetime] = None
-    created_at: datetime
-    updated_at: datetime
-    
-    # Post-meeting data
-    summary: Optional[dict] = None  # AI-generated summary
-    action_items: Optional[list] = None
-    decisions: Optional[list] = None
+    """Meeting document as returned from API."""
+
+    id: str = Field(..., description="Meeting ObjectId as string")
+    created_at: datetime = Field(..., description="Creation timestamp")
 
     class Config:
         from_attributes = True
         json_encoders = {ObjectId: str}
+        populate_by_name = True
+
+
+class StartInstantResponse(BaseModel):
+    """Response for POST /meetings/start-instant (camelCase in JSON per spec)."""
+
+    meeting_id: str = Field(..., alias="meetingId", description="Meeting ID")
+    room_name: str = Field(..., alias="roomName", description="Jitsi room name")
+    jitsi_url: str = Field(..., alias="jitsiUrl", description="Full Jitsi meeting URL")
+
+    model_config = {"populate_by_name": True}

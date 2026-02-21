@@ -72,21 +72,20 @@ async def verify_project_membership(
     project_id: str,
     current_user: User = Depends(get_current_user)
 ) -> dict:
-    """Verify user is a member of the project and return project"""
+    """Verify user is a member of the project and return project."""
     db = await get_database()
-    
-    try:
-        project = await db.projects.find_one({"_id": ObjectId(project_id)})
-    except Exception:
+
+    if not isinstance(project_id, str) or not ObjectId.is_valid(project_id):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid project ID"
+            detail="Invalid project ID",
         )
-    
+
+    project = await db["projects"].find_one({"_id": ObjectId(project_id)})
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found"
+            detail="Project not found",
         )
     
     if current_user.id not in project.get("members", []):

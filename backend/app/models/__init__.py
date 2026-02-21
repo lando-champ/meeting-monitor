@@ -1,5 +1,10 @@
 from .user import User, UserInDB
-from .meeting import Meeting, MeetingCreate, MeetingUpdate
+from .meeting import (
+    Meeting,
+    MeetingCreateSchedule,
+    MeetingCreateInstant,
+    StartInstantResponse,
+)
 from .attendance import Attendance, AttendanceCreate
 from .transcript import Transcript, TranscriptCreate
 from .task import Task, TaskCreate, TaskUpdate
@@ -9,8 +14,9 @@ __all__ = [
     "User",
     "UserInDB",
     "Meeting",
-    "MeetingCreate",
-    "MeetingUpdate",
+    "MeetingCreateSchedule",
+    "MeetingCreateInstant",
+    "StartInstantResponse",
     "Attendance",
     "AttendanceCreate",
     "Transcript",
