@@ -43,8 +43,6 @@ const TeacherSettings = () => {
       sidebarItems={teacherSidebarItems}
       sidebarTitle="Teacher"
       sidebarSubtitle="Education Dashboard"
-      userName="Prof. James Wilson"
-      userRole="Computer Science"
     >
       <div className="space-y-6 max-w-4xl">
         <Card className="shadow-card">

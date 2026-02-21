@@ -11,7 +11,13 @@ import {
   Clock,
   CheckCircle2,
   Play,
-  Upload
+  Upload,
+  FileText,
+  MessageSquare,
+  ChevronDown,
+  ChevronRight,
+  Loader2,
+  FileAudio
 } from 'lucide-react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { SidebarItem } from '@/components/layout/Sidebar';
@@ -19,12 +25,19 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import UploadMeeting from '@/components/meetings/UploadMeeting';
 import { mockMeetings } from '@/data/mockData';
 import { format, isSameDay } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useAuth } from '@/context/AuthContext';
+import { listMeetingRecordings, type MeetingRecordingApi } from '@/lib/api';
 import { Calendar as CalendarPicker } from '@/components/ui/calendar';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -41,9 +54,106 @@ import {
 import { Meeting } from '@/lib/types';
 import { loadWorkspaceMeetings, saveWorkspaceMeetings } from '@/lib/workspaceStorage';
 
+function RecordingHistoryItem({ recording }: { recording: MeetingRecordingApi }) {
+  const [open, setOpen] = useState(false);
+  const summary = recording.summary ?? recording.summary_dict;
+  const created = recording.created_at ? format(new Date(recording.created_at), 'MMM d, yyyy • h:mm a') : '';
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <div className="border rounded-lg overflow-hidden">
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              "w-full flex items-center gap-3 p-4 text-left hover:bg-muted/50 transition-colors",
+              open && "bg-muted/30"
+            )}
+          >
+            {open ? (
+              <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            ) : (
+              <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            )}
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <FileAudio className="h-5 w-5 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-medium truncate">{recording.title || recording.file_name}</p>
+              <p className="text-sm text-muted-foreground">{created}</p>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <Badge variant="secondary" className="text-xs">
+                {recording.action_items?.length ?? 0} actions
+              </Badge>
+              <Badge variant="outline" className="text-xs capitalize">
+                {recording.status}
+              </Badge>
+            </div>
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="border-t bg-muted/20 p-4 space-y-4">
+            <div>
+              <h4 className="font-semibold text-sm flex items-center gap-2 mb-2">
+                <MessageSquare className="h-4 w-4" />
+                Transcription
+              </h4>
+              <div className="max-h-48 overflow-y-auto rounded-md bg-background p-3 text-sm whitespace-pre-wrap text-muted-foreground">
+                {recording.transcription || 'No transcription available.'}
+              </div>
+            </div>
+            <div>
+              <h4 className="font-semibold text-sm flex items-center gap-2 mb-2">
+                <FileText className="h-4 w-4" />
+                Summary
+              </h4>
+              <div className="space-y-2 text-sm">
+                <p className="text-muted-foreground">{summary?.overview ?? 'No summary.'}</p>
+                {(summary?.key_points?.length ?? 0) > 0 && (
+                  <ul className="list-disc list-inside text-muted-foreground space-y-1">
+                    {summary!.key_points!.map((p, i) => (
+                      <li key={i}>{p}</li>
+                    ))}
+                  </ul>
+                )}
+                {(summary?.decisions?.length ?? 0) > 0 && (
+                  <div>
+                    <span className="font-medium">Decisions: </span>
+                    <span className="text-muted-foreground">{summary!.decisions!.join('; ')}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div>
+              <h4 className="font-semibold text-sm flex items-center gap-2 mb-2">
+                <ListTodo className="h-4 w-4" />
+                Action Items
+              </h4>
+              <ul className="space-y-1.5">
+                {(recording.action_items?.length ?? 0) > 0 ? (
+                  recording.action_items!.map((item, i) => (
+                    <li key={i} className="flex items-center gap-2 text-sm">
+                      <CheckCircle2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      {item}
+                    </li>
+                  ))
+                ) : (
+                  <li className="text-sm text-muted-foreground">None</li>
+                )}
+              </ul>
+            </div>
+          </div>
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
+  );
+}
+
 const ManagerMeetings = () => {
   const { workspaceId = "alpha" } = useParams();
   const navigate = useNavigate();
+  const { token } = useAuth();
   const basePath = `/business/manager/workspaces/${workspaceId}`;
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [scheduleOpen, setScheduleOpen] = useState(false);
@@ -58,6 +168,25 @@ const ManagerMeetings = () => {
   const [joinId, setJoinId] = useState("");
   const [joinError, setJoinError] = useState("");
   const [scheduleError, setScheduleError] = useState("");
+  const [recordings, setRecordings] = useState<MeetingRecordingApi[]>([]);
+  const [recordingsLoading, setRecordingsLoading] = useState(false);
+
+  const fetchRecordings = useCallback(async () => {
+    if (!token) return;
+    setRecordingsLoading(true);
+    try {
+      const list = await listMeetingRecordings(token, workspaceId);
+      setRecordings(list);
+    } catch {
+      setRecordings([]);
+    } finally {
+      setRecordingsLoading(false);
+    }
+  }, [token, workspaceId]);
+
+  useEffect(() => {
+    fetchRecordings();
+  }, [fetchRecordings]);
 
   useEffect(() => {
     const scheduled = mockMeetings.filter((meeting) => meeting.status === 'scheduled');
@@ -151,8 +280,6 @@ const ManagerMeetings = () => {
       sidebarItems={managerSidebarItems}
       sidebarTitle="Manager"
       sidebarSubtitle="Business Dashboard"
-      userName="Sarah Chen"
-      userRole="Product Manager"
     >
       <div className="space-y-6">
         {/* Page Header */}
@@ -278,7 +405,12 @@ const ManagerMeetings = () => {
 
         <div className="grid lg:grid-cols-2 gap-6">
           {/* Upload Section */}
-          <UploadMeeting variant="corporate" title="Upload Meeting Recording" />
+          <UploadMeeting
+            variant="corporate"
+            title="Upload Meeting Recording"
+            projectId={workspaceId}
+            onUploadComplete={fetchRecordings}
+          />
 
           {/* Upcoming Meetings */}
           <Card className="shadow-card">
@@ -363,6 +495,38 @@ const ManagerMeetings = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* Upload History - stored recordings with transcription, summary, action items */}
+        <Card className="shadow-card">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileAudio className="h-5 w-5 text-primary" />
+              Upload History
+            </CardTitle>
+            <CardDescription>
+              All uploaded meeting recordings with transcription, summary, and action items
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {recordingsLoading ? (
+              <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                Loading recordings…
+              </div>
+            ) : recordings.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Upload className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                <p>No uploaded recordings yet. Upload a meeting recording above to see it here.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {recordings.map((rec) => (
+                  <RecordingHistoryItem key={rec.id} recording={rec} />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Meeting History */}
         <Card className="shadow-card">

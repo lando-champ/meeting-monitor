@@ -32,18 +32,22 @@ import {
 } from '@/components/ui/dialog';
 import { useMemo, useState } from 'react';
 
-const mockStudents = [
-  { id: '1', name: 'Emma Thompson', email: 'emma.t@university.edu', grade: 'A', progress: 92, engagement: 'high' },
-  { id: '2', name: 'James Chen', email: 'james.c@university.edu', grade: 'B+', progress: 85, engagement: 'medium' },
-  { id: '3', name: 'Sofia Martinez', email: 'sofia.m@university.edu', grade: 'A-', progress: 88, engagement: 'high' },
-  { id: '4', name: 'Michael Johnson', email: 'michael.j@university.edu', grade: 'B', progress: 78, engagement: 'medium' },
-  { id: '5', name: 'Olivia Brown', email: 'olivia.b@university.edu', grade: 'C+', progress: 65, engagement: 'low' },
-];
-
 const TeacherStudents = () => {
   const { classId = "cs101" } = useParams();
   const basePath = `/education/teacher/classes/${classId}`;
   const { currentClass, addStudentToClass } = useClass();
+  const students = useMemo(() => {
+    const details = currentClass?.memberDetails ?? [];
+    const ownerId = currentClass?.ownerId;
+    return details.map((m) => ({
+      id: m.id,
+      name: m.name,
+      email: m.email,
+      grade: "-",
+      progress: 0,
+      engagement: m.id === ownerId ? "Instructor" : "Student",
+    }));
+  }, [currentClass?.memberDetails, currentClass?.ownerId]);
   const [newStudent, setNewStudent] = useState("");
   const [error, setError] = useState("");
   const isValid = useMemo(() => {
@@ -69,8 +73,6 @@ const TeacherStudents = () => {
       sidebarItems={teacherSidebarItems}
       sidebarTitle="Teacher"
       sidebarSubtitle="Education Dashboard"
-      userName="Prof. James Wilson"
-      userRole="Computer Science"
     >
       <div className="space-y-6">
         {/* Page Header */}
@@ -132,14 +134,17 @@ const TeacherStudents = () => {
           <Card className="shadow-card">
             <CardHeader>
               <CardTitle>Class Roster</CardTitle>
-              <CardDescription>Students with access to this class</CardDescription>
+              <CardDescription>All members with access to this class (from database)</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {currentClass.students.map((student) => (
-                  <div key={student} className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{student}</span>
-                    <Badge variant="secondary">Student</Badge>
+                {(currentClass.memberDetails ?? []).map((m) => (
+                  <div key={m.id} className="flex items-center justify-between text-sm">
+                    <span className="font-medium">{m.name}</span>
+                    <span className="text-muted-foreground">{m.email}</span>
+                    <Badge variant={m.id === currentClass.ownerId ? "default" : "secondary"}>
+                      {m.id === currentClass.ownerId ? "Instructor" : "Student"}
+                    </Badge>
                   </div>
                 ))}
               </div>
@@ -159,7 +164,7 @@ const TeacherStudents = () => {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-2xl font-bold">95</p>
+                  <p className="text-2xl font-bold">{students.length}</p>
                   <p className="text-sm text-muted-foreground">Total Students</p>
                 </div>
                 <Users className="h-8 w-8 text-primary/20" />
@@ -198,7 +203,10 @@ const TeacherStudents = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {mockStudents.map((student) => (
+              {students.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">No students in this class yet. Share the invite code so students can join.</p>
+              ) : (
+              students.map((student) => (
                 <div 
                   key={student.id} 
                   className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50"
@@ -242,7 +250,8 @@ const TeacherStudents = () => {
                     </Button>
                   </div>
                 </div>
-              ))}
+              ))
+              )}
             </div>
           </CardContent>
         </Card>

@@ -80,8 +80,6 @@ const ManagerSettings = () => {
       sidebarItems={managerSidebarItems}
       sidebarTitle="Manager"
       sidebarSubtitle="Business Dashboard"
-      userName="Sarah Chen"
-      userRole="Product Manager"
     >
       <div className="space-y-6 max-w-4xl">
         <Card className="shadow-card">

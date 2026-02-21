@@ -1,4 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
+import {
+  listProjects,
+  createProject,
+  joinProject,
+  leaveProject,
+  type ApiProject,
+  type ProjectMember,
+} from "@/lib/api";
 
 export type WorkspaceRole = "manager" | "member";
 
@@ -7,9 +16,11 @@ export interface Workspace {
   name: string;
   description: string;
   inviteCode: string;
+  ownerId: string;
   ownerEmail: string;
   members: string[];
   membersCount: number;
+  memberDetails: ProjectMember[];
 }
 
 interface WorkspaceContextValue {
@@ -21,86 +32,71 @@ interface WorkspaceContextValue {
   setRole: (role: WorkspaceRole) => void;
   setCurrentWorkspaceId: (id: string) => void;
   ensureWorkspace: (id: string) => void;
-  createWorkspace: (name: string, description: string, inviteCode: string) => Workspace;
-  joinWorkspace: (code: string) => Workspace | null;
+  createWorkspace: (name: string, description: string, inviteCode: string) => Promise<Workspace>;
+  joinWorkspace: (code: string) => Promise<Workspace>;
+  deleteWorkspace: (workspaceId: string) => Promise<boolean>;
+  leaveWorkspace: (workspaceId: string) => Promise<boolean>;
+  deleteAllWorkspaces: () => Promise<number>;
   addMemberToWorkspace: (workspaceId: string, memberEmail: string) => void;
   hasAccessToWorkspace: (workspaceId: string) => boolean;
   getWorkspaceByInviteCode: (code: string) => Workspace | null;
+  refreshWorkspaces: () => Promise<void>;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | undefined>(undefined);
 
-const STORAGE_KEY = "meetingSenseWorkspaces";
-
-const managerEmail = "sarah.chen@company.com";
-const memberEmail = "alex.kim@company.com";
-
-const initialWorkspaces: Workspace[] = [
-  {
-    id: "alpha",
-    name: "Alpha Project",
-    description: "Core product development",
-    inviteCode: "ALPHA2025",
-    ownerEmail: managerEmail,
-    members: [managerEmail],
-    membersCount: 1,
-  },
-  {
-    id: "growth",
-    name: "Growth Team",
-    description: "Acquisition and retention initiatives",
-    inviteCode: "GROWTH2025",
-    ownerEmail: managerEmail,
-    members: [managerEmail],
-    membersCount: 1,
-  },
-  {
-    id: "platform",
-    name: "Platform Initiative",
-    description: "Infrastructure and enablement",
-    inviteCode: "PLATFORM25",
-    ownerEmail: managerEmail,
-    members: [managerEmail],
-    membersCount: 1,
-  },
-];
+function mapApiProjectToWorkspace(p: ApiProject): Workspace {
+  const owner = p.member_details?.find((m) => m.id === p.owner_id);
+  const memberEmails = (p.member_details ?? []).map((m) => m.email);
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.description ?? "",
+    inviteCode: p.invite_code,
+    ownerId: p.owner_id,
+    ownerEmail: owner?.email ?? "",
+    members: memberEmails,
+    membersCount: (p.member_details ?? []).length,
+    memberDetails: p.member_details ?? [],
+  };
+}
 
 export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) => {
+  const { user, token } = useAuth();
   const [role, setRole] = useState<WorkspaceRole | null>(null);
-  const [workspaces, setWorkspaces] = useState<Workspace[]>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored) as Workspace[];
-        return parsed.map((workspace) => ({
-          ...workspace,
-          members: workspace.members ?? [],
-          membersCount: workspace.members?.length ?? workspace.membersCount ?? 0,
-        }));
-      } catch {
-        return initialWorkspaces;
-      }
-    }
-    return initialWorkspaces;
-  });
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const currentUserEmail = useMemo(() => {
-    if (role === "member") {
-      return memberEmail;
+  const currentUserEmail = user?.email ?? "";
+
+  const fetchWorkspaces = useCallback(async () => {
+    if (!token) {
+      setWorkspaces([]);
+      setLoading(false);
+      return;
     }
-    return managerEmail;
-  }, [role]);
+    try {
+      const list = await listProjects(token, "workspace");
+      setWorkspaces(list.map(mapApiProjectToWorkspace));
+      setCurrentWorkspaceId((id) => (id && list.some((p) => p.id === id)) ? id : (list[0]?.id ?? null));
+    } catch {
+      setWorkspaces([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchWorkspaces();
+  }, [fetchWorkspaces]);
 
   useEffect(() => {
     if (!currentWorkspaceId && workspaces.length) {
       setCurrentWorkspaceId(workspaces[0].id);
     }
   }, [currentWorkspaceId, workspaces]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(workspaces));
-  }, [workspaces]);
 
   const currentWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === currentWorkspaceId) ?? null,
@@ -117,48 +113,74 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
   );
 
   const createWorkspace = useCallback(
-    (name: string, description: string, inviteCode: string) => {
-      const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)+/g, "");
-      const workspace: Workspace = {
-        id: id || `workspace-${Date.now()}`,
-        name,
-        description,
-        inviteCode,
-        ownerEmail: managerEmail,
-        members: [managerEmail],
-        membersCount: 1,
-      };
+    async (name: string, description: string, inviteCode: string) => {
+      if (!token) throw new Error("Not authenticated");
+      const created = await createProject(token, {
+        name: name.trim(),
+        description: description.trim(),
+        invite_code: inviteCode.trim(),
+        project_type: "workspace",
+      });
+      const workspace = mapApiProjectToWorkspace(created);
       setWorkspaces((prev) => [...prev, workspace]);
       setCurrentWorkspaceId(workspace.id);
       return workspace;
     },
-    [setWorkspaces],
+    [token],
   );
 
   const joinWorkspace = useCallback(
-    (code: string) => {
-      const workspace = workspaces.find(
-        (item) => item.inviteCode.toLowerCase() === code.toLowerCase(),
-      );
-      if (!workspace) {
-        return null;
-      }
-      setWorkspaces((prev) =>
-        prev.map((item) =>
-          item.id === workspace.id && !item.members.includes(memberEmail)
-            ? {
-                ...item,
-                members: [...item.members, memberEmail],
-                membersCount: item.members.length + 1,
-              }
-            : item,
-        ),
-      );
+    async (code: string) => {
+      if (!token) throw new Error("Not authenticated");
+      const joined = await joinProject(token, code);
+      const workspace = mapApiProjectToWorkspace(joined);
+      setWorkspaces((prev) => {
+        if (prev.some((w) => w.id === workspace.id)) {
+          return prev.map((w) => (w.id === workspace.id ? workspace : w));
+        }
+        return [...prev, workspace];
+      });
       setCurrentWorkspaceId(workspace.id);
       return workspace;
     },
-    [workspaces],
+    [token],
   );
+
+  const deleteWorkspace = useCallback(
+    async (workspaceId: string) => {
+      if (!token) return false;
+      try {
+        await leaveProject(token, workspaceId);
+        setWorkspaces((prev) => prev.filter((w) => w.id !== workspaceId));
+        setCurrentWorkspaceId((id) => (id === workspaceId ? null : id));
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [token],
+  );
+
+  const leaveWorkspace = useCallback(
+    (workspaceId: string) => deleteWorkspace(workspaceId),
+    [deleteWorkspace],
+  );
+
+  const deleteAllWorkspaces = useCallback(async () => {
+    if (!token) return 0;
+    const count = workspaces.length;
+    if (count === 0) return 0;
+    for (const w of workspaces) {
+      try {
+        await leaveProject(token, w.id);
+      } catch {
+        /* skip */
+      }
+    }
+    setWorkspaces([]);
+    setCurrentWorkspaceId(null);
+    return count;
+  }, [workspaces, token]);
 
   const addMemberToWorkspace = useCallback(
     (workspaceId: string, member: string) => {
@@ -185,15 +207,10 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
   const hasAccessToWorkspace = useCallback(
     (workspaceId: string) => {
       const workspace = workspaces.find((item) => item.id === workspaceId);
-      if (!workspace) {
-        return false;
-      }
-      if (role === "member") {
-        return workspace.members.includes(currentUserEmail);
-      }
-      return true;
+      if (!workspace) return false;
+      return workspace.members.includes(currentUserEmail);
     },
-    [workspaces, role, currentUserEmail],
+    [workspaces, currentUserEmail],
   );
 
   const getWorkspaceByInviteCode = useCallback(
@@ -215,9 +232,13 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
       ensureWorkspace,
       createWorkspace,
       joinWorkspace,
+      deleteWorkspace,
+      leaveWorkspace,
+      deleteAllWorkspaces,
       addMemberToWorkspace,
       hasAccessToWorkspace,
       getWorkspaceByInviteCode,
+      refreshWorkspaces: fetchWorkspaces,
     }),
     [
       role,
@@ -229,9 +250,13 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
       ensureWorkspace,
       createWorkspace,
       joinWorkspace,
+      deleteWorkspace,
+      leaveWorkspace,
+      deleteAllWorkspaces,
       addMemberToWorkspace,
       hasAccessToWorkspace,
       getWorkspaceByInviteCode,
+      fetchWorkspaces,
     ],
   );
 

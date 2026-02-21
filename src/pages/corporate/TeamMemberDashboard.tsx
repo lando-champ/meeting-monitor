@@ -22,8 +22,10 @@ import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
 import { mockMeetings, mockTasks, getTaskStats } from '@/data/mockData';
 import { format, formatDistanceToNow } from 'date-fns';
+import { useAuth } from '@/context/AuthContext';
 
 const TeamMemberDashboard = () => {
+  const { user } = useAuth();
   const { workspaceId = "alpha" } = useParams();
   const navigate = useNavigate();
   const basePath = `/business/member/workspaces/${workspaceId}`;
@@ -49,15 +51,12 @@ const TeamMemberDashboard = () => {
       sidebarItems={teamMemberSidebarItems}
       sidebarTitle="Team Member"
       sidebarSubtitle="Business Dashboard"
-      userName="Michael Park"
-      userRole="Senior Developer"
-      userAvatar="https://api.dicebear.com/7.x/avataaars/svg?seed=Michael"
     >
       <div className="space-y-6">
         {/* Page Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Good morning, Michael</h1>
+            <h1 className="text-2xl font-bold">Good morning, {user?.name?.split(' ')[0] ?? 'there'}</h1>
             <p className="text-muted-foreground">You have {taskStats.inProgress + taskStats.todo} tasks to work on today.</p>
           </div>
           <Link to={`${basePath}/meetings`}>

@@ -84,8 +84,6 @@ const TeacherAssignments = () => {
       sidebarItems={teacherSidebarItems}
       sidebarTitle="Teacher"
       sidebarSubtitle="Education Dashboard"
-      userName="Prof. James Wilson"
-      userRole="Computer Science"
     >
       <div className="space-y-6">
         <div className="flex items-center justify-between">

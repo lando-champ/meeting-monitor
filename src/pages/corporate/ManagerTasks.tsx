@@ -133,8 +133,6 @@ const ManagerTasks = () => {
       sidebarItems={managerSidebarItems}
       sidebarTitle="Manager"
       sidebarSubtitle="Business Dashboard"
-      userName="Sarah Chen"
-      userRole="Product Manager"
     >
       <div className="space-y-6">
         {/* Page Header */}

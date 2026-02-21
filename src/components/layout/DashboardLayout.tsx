@@ -7,9 +7,6 @@ interface DashboardLayoutProps {
   sidebarItems: SidebarItem[];
   sidebarTitle: string;
   sidebarSubtitle?: string;
-  userName?: string;
-  userRole?: string;
-  userAvatar?: string;
   showMeetingStatus?: boolean;
 }
 
@@ -18,9 +15,6 @@ const DashboardLayout = ({
   sidebarItems,
   sidebarTitle,
   sidebarSubtitle,
-  userName,
-  userRole,
-  userAvatar,
   showMeetingStatus = true,
 }: DashboardLayoutProps) => {
   return (
@@ -31,12 +25,7 @@ const DashboardLayout = ({
         subtitle={sidebarSubtitle}
       />
       <div className="flex-1 flex flex-col">
-        <TopBar 
-          userName={userName}
-          userRole={userRole}
-          userAvatar={userAvatar}
-          showMeetingStatus={showMeetingStatus}
-        />
+        <TopBar showMeetingStatus={showMeetingStatus} />
         <main className="flex-1 p-6 overflow-auto">
           {children}
         </main>

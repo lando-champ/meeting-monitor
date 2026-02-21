@@ -19,10 +19,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
-import { mockTeamMembers } from '@/data/mockData';
 import { cn } from '@/lib/utils';
 import { useParams } from 'react-router-dom';
 import { useWorkspace } from '@/context/WorkspaceContext';
+import { useAuth } from '@/context/AuthContext';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -35,7 +35,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,15 +43,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { TeamMember } from '@/lib/types';
-import { loadWorkspaceMembers, saveWorkspaceMembers } from '@/lib/workspaceStorage';
-import { useEffect } from 'react';
 
 const ManagerTeam = () => {
   const { workspaceId = "alpha" } = useParams();
   const basePath = `/business/manager/workspaces/${workspaceId}`;
-  const { currentWorkspace, addMemberToWorkspace } = useWorkspace();
+  const { currentWorkspace, addMemberToWorkspace, refreshWorkspaces } = useWorkspace();
+  const { user } = useAuth();
   type EditableMember = TeamMember & { designation?: string };
-  const [teamMembers, setTeamMembers] = useState<EditableMember[]>([]);
   const [newMember, setNewMember] = useState("");
   const [error, setError] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -65,24 +63,31 @@ const ManagerTeam = () => {
   const inviteLink = `${window.location.origin}/join/workspace/${inviteCode}`;
   const isValid = useMemo(() => {
     const value = newMember.trim();
-    if (!value) {
-      return false;
-    }
-    if (value.includes("@")) {
-      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-    }
+    if (!value) return false;
+    if (value.includes("@")) return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
     return value.length >= 3;
   }, [newMember]);
 
-  useEffect(() => {
-    setTeamMembers(loadWorkspaceMembers(workspaceId, mockTeamMembers));
-  }, [workspaceId]);
+  const teamMembers: EditableMember[] = useMemo(() => {
+    const details = currentWorkspace?.memberDetails ?? [];
+    const ownerId = currentWorkspace?.ownerId;
+    return details.map((m) => ({
+      id: m.id,
+      name: m.name,
+      email: m.email,
+      avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(m.name)}`,
+      role: m.id === ownerId ? "Owner" : "Member",
+      status: "active" as const,
+      productivityScore: 0,
+      tasksCompleted: 0,
+      totalTasks: 0,
+    }));
+  }, [currentWorkspace?.memberDetails, currentWorkspace?.ownerId]);
 
   useEffect(() => {
-    if (teamMembers.length) {
-      saveWorkspaceMembers(workspaceId, teamMembers);
-    }
-  }, [teamMembers, workspaceId]);
+    refreshWorkspaces();
+  }, [workspaceId, refreshWorkspaces]);
+
   const managerSidebarItems: SidebarItem[] = [
     { title: 'Dashboard', href: `${basePath}/dashboard`, icon: LayoutDashboard },
     { title: 'Meetings', href: `${basePath}/meetings`, icon: Calendar, badge: 3 },
@@ -104,8 +109,6 @@ const ManagerTeam = () => {
       sidebarItems={managerSidebarItems}
       sidebarTitle="Manager"
       sidebarSubtitle="Business Dashboard"
-      userName="Sarah Chen"
-      userRole="Product Manager"
     >
       <div className="space-y-6">
         {/* Page Header */}
@@ -228,14 +231,17 @@ const ManagerTeam = () => {
           <Card className="shadow-card">
             <CardHeader>
               <CardTitle>Workspace Members</CardTitle>
-              <CardDescription>Members with access to this workspace</CardDescription>
+              <CardDescription>All team members with access to this workspace (from database)</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {currentWorkspace.members.map((member) => (
-                  <div key={member} className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{member}</span>
-                    <Badge variant="secondary">Member</Badge>
+                {(currentWorkspace.memberDetails ?? []).map((m) => (
+                  <div key={m.id} className="flex items-center justify-between text-sm">
+                    <span className="font-medium">{m.name}</span>
+                    <span className="text-muted-foreground">{m.email}</span>
+                    <Badge variant={m.id === currentWorkspace.ownerId ? "default" : "secondary"}>
+                      {m.id === currentWorkspace.ownerId ? "Owner" : "Member"}
+                    </Badge>
                   </div>
                 ))}
               </div>

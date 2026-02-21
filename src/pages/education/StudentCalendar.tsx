@@ -96,8 +96,6 @@ const StudentCalendar = () => {
       sidebarItems={studentSidebarItems}
       sidebarTitle="Student"
       sidebarSubtitle="Learning Dashboard"
-      userName="Emma Thompson"
-      userRole="Computer Science"
     >
       <div className="space-y-6">
         <div>

@@ -83,24 +83,15 @@ export interface WorkspaceDocument {
 
 const docKey = (workspaceId: string) => `meetingSense:workspace:${workspaceId}:documents`;
 
-const defaultDocs: WorkspaceDocument[] = [
-  { id: "1", name: "Sprint Planning Notes", type: "doc", size: "245 KB", modified: "2 hours ago" },
-  { id: "2", name: "Q4 Goals Presentation", type: "ppt", size: "1.2 MB", modified: "Yesterday" },
-  { id: "3", name: "Meeting Recording - Dec 15", type: "video", size: "156 MB", modified: "3 days ago" },
-  { id: "4", name: "Project Requirements", type: "doc", size: "89 KB", modified: "1 week ago" },
-  { id: "5", name: "Design Assets", type: "folder", size: "23 files", modified: "2 weeks ago" },
-];
-
 export const loadWorkspaceDocuments = (workspaceId: string): WorkspaceDocument[] => {
   const stored = localStorage.getItem(docKey(workspaceId));
   if (!stored) {
-    localStorage.setItem(docKey(workspaceId), JSON.stringify(defaultDocs));
-    return defaultDocs;
+    return [];
   }
   try {
     return JSON.parse(stored);
   } catch {
-    return defaultDocs;
+    return [];
   }
 };
 

@@ -1,4 +1,5 @@
-import { Bell, Search, Radio, ChevronDown } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Bell, Search, Radio, ChevronDown, User, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -11,22 +12,23 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { mockNotifications } from '@/data/mockData';
+import { useAuth } from '@/context/AuthContext';
 
 interface TopBarProps {
-  userName?: string;
-  userRole?: string;
-  userAvatar?: string;
   showMeetingStatus?: boolean;
 }
 
-const TopBar = ({ 
-  userName = "Sarah Chen", 
-  userRole = "Product Manager",
-  userAvatar = "https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah",
-  showMeetingStatus = true
-}: TopBarProps) => {
-  const unreadCount = mockNotifications.filter(n => !n.isRead).length;
+const roleLabel = (role: string) =>
+  role === "manager" ? "Manager" : role === "member" ? "Team Member" : role === "teacher" ? "Teacher" : "Student";
+
+const TopBar = ({ showMeetingStatus = true }: TopBarProps) => {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const displayName = user?.name ?? "";
+  const displayRole = user ? roleLabel(user.role) : "";
+  const displayAvatar = user?.avatar ?? undefined;
+  const notifications: { id: string; title: string; message: string; isRead: boolean }[] = [];
+  const unreadCount = notifications.filter(n => !n.isRead).length;
 
   return (
     <header className="h-16 border-b bg-card flex items-center justify-between px-6">
@@ -71,17 +73,23 @@ const TopBar = ({
           <DropdownMenuContent align="end" className="w-80 bg-popover">
             <DropdownMenuLabel>Notifications</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {mockNotifications.slice(0, 4).map((notification) => (
-              <DropdownMenuItem key={notification.id} className="flex flex-col items-start gap-1 p-3">
-                <div className="flex items-center gap-2 w-full">
-                  <span className="font-medium text-sm">{notification.title}</span>
-                  {!notification.isRead && (
-                    <span className="h-2 w-2 rounded-full bg-primary ml-auto" />
-                  )}
-                </div>
-                <span className="text-xs text-muted-foreground">{notification.message}</span>
+            {notifications.length === 0 ? (
+              <DropdownMenuItem disabled className="text-muted-foreground">
+                No notifications
               </DropdownMenuItem>
-            ))}
+            ) : (
+              notifications.slice(0, 4).map((notification) => (
+                <DropdownMenuItem key={notification.id} className="flex flex-col items-start gap-1 p-3">
+                  <div className="flex items-center gap-2 w-full">
+                    <span className="font-medium text-sm">{notification.title}</span>
+                    {!notification.isRead && (
+                      <span className="h-2 w-2 rounded-full bg-primary ml-auto" />
+                    )}
+                  </div>
+                  <span className="text-xs text-muted-foreground">{notification.message}</span>
+                </DropdownMenuItem>
+              ))
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem className="text-center justify-center text-primary">
               View all notifications
@@ -94,12 +102,12 @@ const TopBar = ({
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-2 px-2">
               <Avatar className="h-8 w-8">
-                <AvatarImage src={userAvatar} alt={userName} />
-                <AvatarFallback>{userName.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                <AvatarImage src={displayAvatar} alt={displayName} />
+                <AvatarFallback>{displayName.split(' ').map(n => n[0]).join('') || 'U'}</AvatarFallback>
               </Avatar>
               <div className="hidden md:flex flex-col items-start">
-                <span className="text-sm font-medium">{userName}</span>
-                <span className="text-xs text-muted-foreground">{userRole}</span>
+                <span className="text-sm font-medium">{displayName}</span>
+                <span className="text-xs text-muted-foreground">{displayRole}</span>
               </div>
               <ChevronDown className="h-4 w-4 text-muted-foreground" />
             </Button>
@@ -107,11 +115,21 @@ const TopBar = ({
           <DropdownMenuContent align="end" className="w-56 bg-popover">
             <DropdownMenuLabel>My Account</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Profile Settings</DropdownMenuItem>
-            <DropdownMenuItem>Team Settings</DropdownMenuItem>
-            <DropdownMenuItem>Billing</DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/profile" className="flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Profile
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive">
+            <DropdownMenuItem
+              className="text-destructive flex items-center gap-2"
+              onClick={() => {
+                logout();
+                navigate('/auth');
+              }}
+            >
+              <LogOut className="h-4 w-4" />
               Sign Out
             </DropdownMenuItem>
           </DropdownMenuContent>

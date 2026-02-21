@@ -29,9 +29,9 @@ const StudentClasses = () => {
   const { classId = "cs101" } = useParams();
   const navigate = useNavigate();
   const basePath = `/education/student/classes/${classId}`;
-  const { classes } = useClass();
+  const { classes, currentUserEmail } = useClass();
   const { getLecturesByClass } = useEducation();
-  const enrolledClasses = classes.filter((cls) => cls.students.includes("emma.thompson@university.edu"));
+  const enrolledClasses = classes.filter((cls) => cls.students.includes(currentUserEmail));
 
   const getMeetingLinkForClass = (clsId: string) => {
     const lectures = getLecturesByClass(clsId);
@@ -60,8 +60,6 @@ const StudentClasses = () => {
       sidebarItems={studentSidebarItems}
       sidebarTitle="Student"
       sidebarSubtitle="Learning Dashboard"
-      userName="Emma Thompson"
-      userRole="Computer Science"
     >
       <div className="space-y-6">
         <div>

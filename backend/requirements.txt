@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+motor
+pymongo
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+websockets
+pydantic
+pydantic-settings
+python-dotenv
+groq
+aiofiles

@@ -19,6 +19,8 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
+import { uploadMeetingRecording, type MeetingRecordingApi } from '@/lib/api';
 
 type ProcessingState = 'idle' | 'uploading' | 'transcribing' | 'analyzing' | 'extracting' | 'complete';
 
@@ -40,6 +42,10 @@ interface ModerationFlag {
 interface UploadMeetingProps {
   variant?: 'corporate' | 'education';
   title?: string;
+  /** Workspace/project ID for storing the recording */
+  projectId?: string;
+  /** Called after a recording is successfully uploaded and processed */
+  onUploadComplete?: () => void;
 }
 
 const mockTranscript = `
@@ -98,10 +104,13 @@ const processingSteps = [
   { state: 'complete', label: 'Processing complete!', progress: 100 },
 ];
 
-const UploadMeeting = ({ variant = 'corporate', title = 'Upload Meeting Recording' }: UploadMeetingProps) => {
+const UploadMeeting = ({ variant = 'corporate', title = 'Upload Meeting Recording', projectId, onUploadComplete }: UploadMeetingProps) => {
+  const { token } = useAuth();
   const [processingState, setProcessingState] = useState<ProcessingState>('idle');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [lastRecording, setLastRecording] = useState<MeetingRecordingApi | null>(null);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -113,43 +122,57 @@ const UploadMeeting = ({ variant = 'corporate', title = 'Upload Meeting Recordin
     setIsDragging(false);
   }, []);
 
-  const simulateProcessing = useCallback(() => {
-    const states: ProcessingState[] = ['uploading', 'transcribing', 'analyzing', 'extracting', 'complete'];
-    let index = 0;
-
-    const interval = setInterval(() => {
-      setProcessingState(states[index]);
-      index++;
-      if (index >= states.length) {
-        clearInterval(interval);
-      }
-    }, 1500);
-  }, []);
+  const runUpload = useCallback(async (file: File) => {
+    if (!token || !projectId) {
+      setUploadError('Please sign in and open a workspace to upload.');
+      return;
+    }
+    setUploadError(null);
+    setUploadedFile(file);
+    setProcessingState('uploading');
+    const steps: ProcessingState[] = ['uploading', 'transcribing', 'analyzing', 'extracting'];
+    let stepIndex = 0;
+    const stepInterval = setInterval(() => {
+      stepIndex++;
+      if (stepIndex < steps.length) setProcessingState(steps[stepIndex]);
+    }, 800);
+    try {
+      const result = await uploadMeetingRecording(token, projectId, file, file.name);
+      clearInterval(stepInterval);
+      setProcessingState('complete');
+      setLastRecording(result);
+      onUploadComplete?.();
+    } catch (err) {
+      clearInterval(stepInterval);
+      setProcessingState('idle');
+      setUploadedFile(null);
+      setUploadError(err instanceof Error ? err.message : 'Upload failed');
+    }
+  }, [token, projectId, onUploadComplete]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      setUploadedFile(files[0]);
-      simulateProcessing();
-    }
-  }, [simulateProcessing]);
+    if (files.length > 0) runUpload(files[0]);
+  }, [runUpload]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (files && files.length > 0) {
-      setUploadedFile(files[0]);
-      simulateProcessing();
-    }
-  }, [simulateProcessing]);
+    if (files && files.length > 0) runUpload(files[0]);
+  }, [runUpload]);
 
   const resetUpload = useCallback(() => {
     setProcessingState('idle');
     setUploadedFile(null);
+    setLastRecording(null);
+    setUploadError(null);
   }, []);
 
   const currentStep = processingSteps.find(s => s.state === processingState);
+  const summary = lastRecording?.summary ?? lastRecording?.summary_dict;
+  const actionItems = lastRecording?.action_items ?? [];
+  const transcription = lastRecording?.transcription ?? '';
 
   return (
     <Card className="shadow-card">
@@ -160,6 +183,12 @@ const UploadMeeting = ({ variant = 'corporate', title = 'Upload Meeting Recordin
         </CardTitle>
       </CardHeader>
       <CardContent>
+        {uploadError && (
+          <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+            {uploadError}
+          </div>
+        )}
         {processingState === 'idle' && (
           <div
             onDragOver={handleDragOver}
@@ -191,6 +220,11 @@ const UploadMeeting = ({ variant = 'corporate', title = 'Upload Meeting Recordin
                   <p className="text-sm text-muted-foreground">
                     Supports MP3, WAV, M4A, MP4, WebM, and more
                   </p>
+                  {(!token || !projectId) && (
+                    <p className="text-sm text-amber-600 dark:text-amber-400 mt-2">
+                      Sign in and open a workspace to save recordings.
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-4 text-muted-foreground">
                   <div className="flex items-center gap-2">
@@ -264,22 +298,16 @@ const UploadMeeting = ({ variant = 'corporate', title = 'Upload Meeting Recordin
               <TabsContent value="transcript" className="mt-4">
                 <Card>
                   <CardContent className="pt-4">
-                    <div className="max-h-64 overflow-y-auto space-y-3 font-mono text-sm">
-                      {mockTranscript.trim().split('\n\n').map((line, i) => {
-                        const match = line.match(/\[(.+?)\] (.+?): (.+)/);
-                        if (match) {
-                          return (
-                            <div key={i} className="p-2 rounded hover:bg-muted/50">
-                              <div className="flex items-center gap-2 mb-1">
-                                <Badge variant="outline" className="text-xs">{match[1]}</Badge>
-                                <span className="font-semibold text-primary">{match[2]}</span>
-                              </div>
-                              <p className="text-muted-foreground pl-2">{match[3]}</p>
-                            </div>
-                          );
-                        }
-                        return null;
-                      })}
+                    <div className="max-h-64 overflow-y-auto space-y-3 font-mono text-sm whitespace-pre-wrap">
+                      {transcription ? (
+                        transcription.split('\n\n').map((para, i) => (
+                          <div key={i} className="p-2 rounded hover:bg-muted/50">
+                            <p className="text-muted-foreground">{para}</p>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-muted-foreground">No transcript available.</p>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -293,28 +321,30 @@ const UploadMeeting = ({ variant = 'corporate', title = 'Upload Meeting Recordin
                         <Sparkles className="h-4 w-4 text-secondary" />
                         AI Summary
                       </h4>
-                      <p className="text-muted-foreground">{mockSummary.overview}</p>
+                      <p className="text-muted-foreground">{summary?.overview ?? 'No summary available.'}</p>
                     </div>
                     <div>
                       <h4 className="font-semibold mb-2">Key Points</h4>
                       <ul className="space-y-2">
-                        {mockSummary.keyPoints.map((point, i) => (
+                        {(summary?.key_points ?? []).map((point, i) => (
                           <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
                             <CheckCircle2 className="h-4 w-4 text-success mt-0.5 flex-shrink-0" />
                             {point}
                           </li>
                         ))}
+                        {(!summary?.key_points?.length) && <li className="text-muted-foreground">None</li>}
                       </ul>
                     </div>
                     <div>
                       <h4 className="font-semibold mb-2">Decisions Made</h4>
                       <ul className="space-y-2">
-                        {mockSummary.decisions.map((decision, i) => (
+                        {(summary?.decisions ?? []).map((decision, i) => (
                           <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
                             <Badge variant="secondary" className="text-xs">Decision</Badge>
                             {decision}
                           </li>
                         ))}
+                        {(!summary?.decisions?.length) && <li className="text-muted-foreground">None</li>}
                       </ul>
                     </div>
                   </CardContent>
@@ -325,34 +355,16 @@ const UploadMeeting = ({ variant = 'corporate', title = 'Upload Meeting Recordin
                 <Card>
                   <CardContent className="pt-4">
                     <div className="space-y-3">
-                      {mockTasks.map((task) => (
-                        <div key={task.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50">
-                          <div className="flex items-center gap-3">
-                            <Badge 
-                              variant="outline" 
-                              className={cn(
-                                "text-xs",
-                                task.priority === 'high' && 'border-destructive text-destructive',
-                                task.priority === 'medium' && 'border-warning text-warning',
-                                task.priority === 'low' && 'border-muted-foreground'
-                              )}
-                            >
-                              {task.priority}
-                            </Badge>
-                            <div>
-                              <p className="font-medium text-sm">{task.title}</p>
-                              <p className="text-xs text-muted-foreground flex items-center gap-2">
-                                <Users className="h-3 w-3" />
-                                {task.assignee}
-                              </p>
-                            </div>
+                      {actionItems.length > 0 ? (
+                        actionItems.map((item, i) => (
+                          <div key={i} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/50">
+                            <ListTodo className="h-4 w-4 text-primary flex-shrink-0" />
+                            <p className="font-medium text-sm">{item}</p>
                           </div>
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Clock className="h-4 w-4" />
-                            {task.deadline}
-                          </div>
-                        </div>
-                      ))}
+                        ))
+                      ) : (
+                        <p className="text-muted-foreground">No action items extracted.</p>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

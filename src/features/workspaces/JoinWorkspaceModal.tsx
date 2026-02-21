@@ -17,22 +17,26 @@ const JoinWorkspaceModal = () => {
   const { joinWorkspace } = useWorkspace();
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
 
-  const handleJoin = () => {
-    if (!code.trim()) {
-      return;
-    }
-    const result = joinWorkspace(code.trim());
-    if (!result) {
-      setError("Invite code not found. Check with your manager.");
-      return;
-    }
-    setCode("");
+  const handleJoin = async () => {
+    if (!code.trim() || loading) return;
     setError("");
+    setLoading(true);
+    try {
+      await joinWorkspace(code.trim());
+      setCode("");
+      setOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Invite code not found or invalid.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="secondary">
           <KeyRound className="h-4 w-4 mr-2" />
@@ -55,8 +59,8 @@ const JoinWorkspaceModal = () => {
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
         <DialogFooter>
-          <Button variant="secondary" onClick={handleJoin} disabled={!code.trim()}>
-            Join Project
+          <Button variant="secondary" onClick={handleJoin} disabled={!code.trim() || loading}>
+            {loading ? "Joining…" : "Join Project"}
           </Button>
         </DialogFooter>
       </DialogContent>

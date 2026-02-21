@@ -18,17 +18,21 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
-import { mockClasses } from '@/data/mockData';
 import { useNavigate } from 'react-router-dom';
+import { useClass } from '@/context/ClassContext';
 import { useEducation } from '@/context/EducationContext';
 import { format, formatDistanceToNow, differenceInDays } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useParams } from 'react-router-dom';
+import { useAuth } from '@/context/AuthContext';
 
 const StudentDashboard = () => {
+  const { user } = useAuth();
   const { classId = "cs101" } = useParams();
   const navigate = useNavigate();
+  const { classes } = useClass();
   const { getLecturesByClass } = useEducation();
+  const upcomingClassList = classes.slice(0, 3);
   const classLectures = getLecturesByClass(classId);
   const liveLecture = classLectures.find((l) => l.status === "live");
   const basePath = `/education/student/classes/${classId}`;
@@ -59,15 +63,12 @@ const StudentDashboard = () => {
       sidebarItems={studentSidebarItems}
       sidebarTitle="Student"
       sidebarSubtitle="Education Dashboard"
-      userName="Alex Johnson"
-      userRole="Computer Science"
-      userAvatar="https://api.dicebear.com/7.x/avataaars/svg?seed=Alex"
       showMeetingStatus={false}
     >
       <div className="space-y-6">
         {/* Page Header */}
         <div>
-          <h1 className="text-2xl font-bold">Hi Alex! 👋</h1>
+          <h1 className="text-2xl font-bold">Hi {user?.name?.split(' ')[0] ?? 'there'}! 👋</h1>
           <p className="text-muted-foreground">
             You have {todoItems.length} tasks to complete this week.
           </p>
@@ -213,15 +214,19 @@ const StudentDashboard = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {mockClasses.slice(0, 3).map((cls) => (
-                    <div key={cls.id} className="p-3 rounded-lg border">
-                      <p className="font-medium text-sm">{cls.name}</p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                        <Clock className="h-3 w-3" />
-                        {cls.schedule}
-                      </p>
-                    </div>
-                  ))}
+                  {upcomingClassList.length === 0 ? (
+                    <p className="text-muted-foreground text-sm py-2">No upcoming classes</p>
+                  ) : (
+                    upcomingClassList.map((cls) => (
+                      <div key={cls.id} className="p-3 rounded-lg border">
+                        <p className="font-medium text-sm">{cls.name}</p>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                          <Clock className="h-3 w-3" />
+                          {cls.description || "—"}
+                        </p>
+                      </div>
+                    ))
+                  )}
                 </div>
               </CardContent>
             </Card>

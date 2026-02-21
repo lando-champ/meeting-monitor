@@ -1,9 +1,19 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Users, ArrowRight } from "lucide-react";
+import { Users, ArrowRight, Trash2, Trash } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useClass, ClassRole } from "@/context/ClassContext";
 import CreateClassModal from "./CreateClassModal";
 import JoinClassModal from "./JoinClassModal";
@@ -13,7 +23,9 @@ interface ClassListProps {
 }
 
 const ClassList = ({ role }: ClassListProps) => {
-  const { classes, currentClassId, setRole, hasAccessToClass } = useClass();
+  const { classes, currentClassId, setRole, hasAccessToClass, deleteClass, deleteAllClasses, currentUserEmail } = useClass();
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
 
   useEffect(() => {
     setRole(role);
@@ -25,9 +37,9 @@ const ClassList = ({ role }: ClassListProps) => {
   );
 
   const canCreate = role === "teacher";
-
   const visibleClasses =
     role === "teacher" ? classes : classes.filter((cls) => hasAccessToClass(cls.id));
+  const myClassCount = visibleClasses.length;
 
   return (
     <div className="min-h-screen bg-background">
@@ -44,6 +56,16 @@ const ClassList = ({ role }: ClassListProps) => {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {myClassCount > 0 && (
+              <Button
+                variant="outline"
+                className="text-destructive border-destructive/50 hover:bg-destructive/10"
+                onClick={() => setShowDeleteAllDialog(true)}
+              >
+                <Trash className="h-4 w-4 mr-2" />
+                Delete all classes
+              </Button>
+            )}
             {canCreate ? <CreateClassModal /> : <JoinClassModal />}
           </div>
         </div>
@@ -71,26 +93,85 @@ const ClassList = ({ role }: ClassListProps) => {
                   </span>
                 </CardDescription>
               </CardHeader>
-              <CardContent className="flex items-center justify-between">
+              <CardContent className="flex flex-wrap items-center justify-between gap-2">
                 <Button variant="outline" asChild>
                   <Link to={`${basePath}/${cls.id}/dashboard`}>
                     Open Class
                     <ArrowRight className="h-4 w-4 ml-2" />
                   </Link>
                 </Button>
-                {role === "teacher" ? (
-                  <Badge className="bg-secondary/10 text-secondary border border-secondary/20">
-                    Instructor
-                  </Badge>
-                ) : (
-                  <Badge className="bg-muted text-muted-foreground border border-muted">Student</Badge>
-                )}
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive border-destructive/50 hover:bg-destructive/10"
+                    onClick={() => setDeleteTargetId(cls.id)}
+                    aria-label="Delete class"
+                  >
+                    <Trash2 className="h-4 w-4 mr-1.5" />
+                    Delete
+                  </Button>
+                  {role === "teacher" ? (
+                    <Badge className="bg-secondary/10 text-secondary border border-secondary/20">
+                      Instructor
+                    </Badge>
+                  ) : (
+                    <Badge className="bg-muted text-muted-foreground border border-muted">Student</Badge>
+                  )}
+                </div>
               </CardContent>
             </Card>
           ))}
         </div>
-
       </main>
+
+      <AlertDialog open={!!deleteTargetId} onOpenChange={(open) => !open && setDeleteTargetId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete class?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You will leave this class. It will no longer appear on your dashboard and your name will be removed from the class. You can re-enroll later with an invite code.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                if (deleteTargetId) {
+                  await deleteClass(deleteTargetId);
+                  setDeleteTargetId(null);
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showDeleteAllDialog} onOpenChange={setShowDeleteAllDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete all classes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You will leave all {myClassCount} class(es). They will no longer appear on your dashboard and your name will be removed from the classes.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                await deleteAllClasses();
+                setShowDeleteAllDialog(false);
+              }}
+            >
+              Delete all
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

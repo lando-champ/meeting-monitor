@@ -1,4 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
+import {
+  listProjects,
+  createProject,
+  joinProject,
+  leaveProject,
+  type ApiProject,
+  type ProjectMember,
+} from "@/lib/api";
 
 export type ClassRole = "teacher" | "student";
 
@@ -7,9 +16,11 @@ export interface ClassItem {
   name: string;
   description: string;
   inviteCode: string;
+  ownerId: string;
   ownerEmail: string;
   students: string[];
   studentCount: number;
+  memberDetails: ProjectMember[];
 }
 
 interface ClassContextValue {
@@ -21,8 +32,11 @@ interface ClassContextValue {
   setRole: (role: ClassRole) => void;
   setCurrentClassId: (id: string) => void;
   ensureClass: (id: string) => void;
-  createClass: (name: string, description: string, inviteCode: string) => ClassItem;
-  joinClass: (code: string) => ClassItem | null;
+  createClass: (name: string, description: string, inviteCode: string) => Promise<ClassItem>;
+  joinClass: (code: string) => Promise<ClassItem>;
+  deleteClass: (classId: string) => Promise<boolean>;
+  leaveClass: (classId: string) => Promise<boolean>;
+  deleteAllClasses: () => Promise<number>;
   addStudentToClass: (classId: string, studentEmail: string) => void;
   hasAccessToClass: (classId: string) => boolean;
   getClassByInviteCode: (code: string) => ClassItem | null;
@@ -30,77 +44,58 @@ interface ClassContextValue {
 
 const ClassContext = createContext<ClassContextValue | undefined>(undefined);
 
-const STORAGE_KEY = "meetingSenseClasses";
-
-const teacherEmail = "prof.wilson@university.edu";
-const studentEmail = "emma.thompson@university.edu";
-
-const initialClasses: ClassItem[] = [
-  {
-    id: "cs101",
-    name: "Intro to Computer Science",
-    description: "Foundations of computing",
-    inviteCode: "CS101",
-    ownerEmail: teacherEmail,
-    students: [teacherEmail, studentEmail],
-    studentCount: 2,
-  },
-  {
-    id: "cs202",
-    name: "Data Structures",
-    description: "Core data structures and algorithms",
-    inviteCode: "CS202",
-    ownerEmail: teacherEmail,
-    students: [teacherEmail, studentEmail],
-    studentCount: 2,
-  },
-  {
-    id: "webdev",
-    name: "Web Development",
-    description: "Frontend and backend fundamentals",
-    inviteCode: "WEBDEV",
-    ownerEmail: teacherEmail,
-    students: [teacherEmail],
-    studentCount: 1,
-  },
-];
+function mapApiProjectToClass(p: ApiProject): ClassItem {
+  const owner = p.member_details?.find((m) => m.id === p.owner_id);
+  const studentEmails = (p.member_details ?? []).map((m) => m.email);
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.description ?? "",
+    inviteCode: p.invite_code,
+    ownerId: p.owner_id,
+    ownerEmail: owner?.email ?? "",
+    students: studentEmails,
+    studentCount: (p.member_details ?? []).length,
+    memberDetails: p.member_details ?? [],
+  };
+}
 
 export const ClassProvider = ({ children }: { children: React.ReactNode }) => {
+  const { user, token } = useAuth();
   const [role, setRole] = useState<ClassRole | null>(null);
-  const [classes, setClasses] = useState<ClassItem[]>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored) as ClassItem[];
-        return parsed.map((cls) => ({
-          ...cls,
-          students: cls.students ?? [],
-          studentCount: cls.students?.length ?? cls.studentCount ?? 0,
-        }));
-      } catch {
-        return initialClasses;
-      }
-    }
-    return initialClasses;
-  });
+  const [classes, setClasses] = useState<ClassItem[]>([]);
   const [currentClassId, setCurrentClassId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const currentUserEmail = useMemo(() => {
-    if (role === "student") {
-      return studentEmail;
+  const currentUserEmail = user?.email ?? "";
+
+  const fetchClasses = useCallback(async () => {
+    if (!token) {
+      setClasses([]);
+      setLoading(false);
+      return;
     }
-    return teacherEmail;
-  }, [role]);
+    try {
+      const list = await listProjects(token, "class");
+      setClasses(list.map(mapApiProjectToClass));
+      setCurrentClassId((id) => (id && list.some((p) => p.id === id)) ? id : (list[0]?.id ?? null));
+    } catch {
+      setClasses([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchClasses();
+  }, [fetchClasses]);
 
   useEffect(() => {
     if (!currentClassId && classes.length) {
       setCurrentClassId(classes[0].id);
     }
   }, [currentClassId, classes]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(classes));
-  }, [classes]);
 
   const currentClass = useMemo(
     () => classes.find((cls) => cls.id === currentClassId) ?? null,
@@ -117,46 +112,74 @@ export const ClassProvider = ({ children }: { children: React.ReactNode }) => {
   );
 
   const createClass = useCallback(
-    (name: string, description: string, inviteCode: string) => {
-      const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)+/g, "");
-      const cls: ClassItem = {
-        id: id || `class-${Date.now()}`,
-        name,
-        description,
-        inviteCode,
-        ownerEmail: teacherEmail,
-        students: [teacherEmail],
-        studentCount: 1,
-      };
+    async (name: string, description: string, inviteCode: string) => {
+      if (!token) throw new Error("Not authenticated");
+      const created = await createProject(token, {
+        name: name.trim(),
+        description: description.trim(),
+        invite_code: inviteCode.trim(),
+        project_type: "class",
+      });
+      const cls = mapApiProjectToClass(created);
       setClasses((prev) => [...prev, cls]);
       setCurrentClassId(cls.id);
       return cls;
     },
-    [setClasses],
+    [token],
   );
 
   const joinClass = useCallback(
-    (code: string) => {
-      const cls = classes.find((item) => item.inviteCode.toLowerCase() === code.toLowerCase());
-      if (!cls) {
-        return null;
-      }
-      setClasses((prev) =>
-        prev.map((item) =>
-          item.id === cls.id && !item.students.includes(studentEmail)
-            ? {
-                ...item,
-                students: [...item.students, studentEmail],
-                studentCount: item.students.length + 1,
-              }
-            : item,
-        ),
-      );
+    async (code: string) => {
+      if (!token) throw new Error("Not authenticated");
+      const joined = await joinProject(token, code);
+      const cls = mapApiProjectToClass(joined);
+      setClasses((prev) => {
+        if (prev.some((c) => c.id === cls.id)) {
+          return prev.map((c) => (c.id === cls.id ? cls : c));
+        }
+        return [...prev, cls];
+      });
       setCurrentClassId(cls.id);
       return cls;
     },
-    [classes],
+    [token],
   );
+
+  const deleteClass = useCallback(
+    async (classId: string) => {
+      if (!token) return false;
+      try {
+        await leaveProject(token, classId);
+        setClasses((prev) => prev.filter((c) => c.id !== classId));
+        setCurrentClassId((id) => (id === classId ? null : id));
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [token],
+  );
+
+  const leaveClass = useCallback(
+    (classId: string) => deleteClass(classId),
+    [deleteClass],
+  );
+
+  const deleteAllClasses = useCallback(async () => {
+    if (!token) return 0;
+    const count = classes.length;
+    if (count === 0) return 0;
+    for (const c of classes) {
+      try {
+        await leaveProject(token, c.id);
+      } catch {
+        /* skip */
+      }
+    }
+    setClasses([]);
+    setCurrentClassId(null);
+    return count;
+  }, [classes, token]);
 
   const addStudentToClass = useCallback(
     (classId: string, student: string) => {
@@ -179,15 +202,10 @@ export const ClassProvider = ({ children }: { children: React.ReactNode }) => {
   const hasAccessToClass = useCallback(
     (classId: string) => {
       const cls = classes.find((item) => item.id === classId);
-      if (!cls) {
-        return false;
-      }
-      if (role === "student") {
-        return cls.students.includes(currentUserEmail);
-      }
-      return true;
+      if (!cls) return false;
+      return cls.students.includes(currentUserEmail);
     },
-    [classes, role, currentUserEmail],
+    [classes, currentUserEmail],
   );
 
   const getClassByInviteCode = useCallback(
@@ -208,6 +226,9 @@ export const ClassProvider = ({ children }: { children: React.ReactNode }) => {
       ensureClass,
       createClass,
       joinClass,
+      deleteClass,
+      leaveClass,
+      deleteAllClasses,
       addStudentToClass,
       hasAccessToClass,
       getClassByInviteCode,
@@ -222,6 +243,9 @@ export const ClassProvider = ({ children }: { children: React.ReactNode }) => {
       ensureClass,
       createClass,
       joinClass,
+      deleteClass,
+      leaveClass,
+      deleteAllClasses,
       addStudentToClass,
       hasAccessToClass,
       getClassByInviteCode,

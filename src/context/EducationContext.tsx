@@ -62,92 +62,6 @@ const loadStored = () => {
   }
 };
 
-const defaultLectures: EducationLecture[] = [
-  {
-    id: "lec-1",
-    title: "Introduction to Variables and Data Types",
-    classId: "cs101",
-    className: "Intro to Computer Science",
-    date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-    time: "10:00",
-    meetingLink: "https://meet.jit.si/intro-cs-variables",
-    platform: "jitsi",
-    description: "Fundamental concepts of variables and data types in Python.",
-    status: "completed",
-    summary: {
-      overview: "Covered fundamental concepts of variables, data types, and basic operations in Python.",
-      keyPoints: [
-        "Variables as containers for storing data",
-        "Primitive data types: int, float, string, boolean",
-        "Type conversion and casting",
-        "Basic arithmetic operators",
-      ],
-      decisions: [],
-      actionItems: ["Complete Chapter 2 exercises", "Practice variable declarations"],
-      sentiment: "positive",
-    },
-    notes: "Focus on type casting and operator precedence. Students struggled with float division.",
-    transcript: [
-      { speaker: "Prof. Wilson", text: "Today we'll cover variables and data types in Python.", timestamp: "00:00" },
-      { speaker: "Prof. Wilson", text: "Variables are containers for storing data values.", timestamp: "02:15" },
-      { speaker: "Prof. Wilson", text: "We have int, float, string, and boolean as primitive types.", timestamp: "05:30" },
-    ],
-    attendance: [
-      { id: "s1", name: "Alex Johnson", email: "alex@uni.edu", joinedAt: "09:58" },
-      { id: "s2", name: "Emma Thompson", email: "emma@uni.edu", joinedAt: "10:02" },
-      { id: "s3", name: "John Doe", email: "john@uni.edu", joinedAt: "10:05" },
-    ],
-    tasks: [
-      { id: "t1", title: "Chapter 2 exercises", assignee: "All", status: "assigned" },
-      { id: "t2", title: "Practice variable declarations", assignee: "Alex Johnson", status: "in-progress" },
-    ],
-  },
-  {
-    id: "lec-2",
-    title: "Control Flow: Conditionals",
-    classId: "cs101",
-    className: "Intro to Computer Science",
-    date: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-    time: "10:00",
-    meetingLink: "https://meet.jit.si/control-flow-cs101",
-    platform: "jitsi",
-    description: "if/else, switch, and conditional logic.",
-    status: "scheduled",
-  },
-  {
-    id: "lec-3",
-    title: "Binary Search Trees",
-    classId: "cs202",
-    className: "Data Structures",
-    date: new Date().toISOString().slice(0, 10),
-    time: "14:00",
-    meetingLink: "https://meet.jit.si/bst-data-structures",
-    platform: "jitsi",
-    description: "BST implementation and traversal.",
-    status: "live",
-  },
-];
-
-const defaultAssignments: EducationAssignment[] = [
-  {
-    id: "a1",
-    title: "Chapter 2 Exercises - Variables",
-    description: "Complete all exercises from Chapter 2 focusing on variable declarations and data types.",
-    dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-    classId: "cs101",
-    lectureId: "lec-1",
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "a2",
-    title: "Build a Calculator App",
-    description: "Create a simple calculator using Python that can perform basic arithmetic operations.",
-    dueDate: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-    classId: "cs101",
-    createdAt: new Date().toISOString(),
-  },
-];
-
 interface EducationContextValue {
   lectures: EducationLecture[];
   assignments: EducationAssignment[];
@@ -168,10 +82,10 @@ const EducationContext = createContext<EducationContextValue | undefined>(undefi
 export const EducationProvider = ({ children }: { children: React.ReactNode }) => {
   const stored = loadStored();
   const [lectures, setLectures] = useState<EducationLecture[]>(
-    stored?.lectures?.length ? stored.lectures : defaultLectures
+    stored?.lectures ?? []
   );
   const [assignments, setAssignments] = useState<EducationAssignment[]>(
-    stored?.assignments?.length ? stored.assignments : defaultAssignments
+    stored?.assignments ?? []
   );
   const [submissions, setSubmissions] = useState<AssignmentSubmission[]>(
     stored?.submissions ?? []

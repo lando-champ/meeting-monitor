@@ -1,443 +1,48 @@
-import { 
-  TeamMember, 
-  Meeting, 
-  Task, 
-  Notification, 
+/**
+ * No sample data - all data comes from API or user context.
+ * Empty exports for backwards compatibility; replace with API calls where needed.
+ */
+import type {
+  TeamMember,
+  Meeting,
+  Task,
+  Notification,
   KanbanColumn,
   TeamAnalytics,
   WeeklyProgress,
+  Class,
   Lecture,
   Assignment,
-  Class
-} from '@/lib/types';
+} from "@/lib/types";
 
-// Team Members
-export const mockTeamMembers: TeamMember[] = [
-  {
-    id: '1',
-    name: 'Sarah Chen',
-    email: 'sarah.chen@company.com',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah',
-    role: 'Product Manager',
-    status: 'active',
-    productivityScore: 92,
-    tasksCompleted: 24,
-    totalTasks: 28,
-  },
-  {
-    id: '2',
-    name: 'Michael Park',
-    email: 'michael.park@company.com',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Michael',
-    role: 'Senior Developer',
-    status: 'busy',
-    productivityScore: 88,
-    tasksCompleted: 31,
-    totalTasks: 35,
-  },
-  {
-    id: '3',
-    name: 'Emily Rodriguez',
-    email: 'emily.r@company.com',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Emily',
-    role: 'UX Designer',
-    status: 'active',
-    productivityScore: 95,
-    tasksCompleted: 18,
-    totalTasks: 19,
-  },
-  {
-    id: '4',
-    name: 'James Wilson',
-    email: 'james.w@company.com',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=James',
-    role: 'Backend Developer',
-    status: 'away',
-    productivityScore: 78,
-    tasksCompleted: 15,
-    totalTasks: 22,
-  },
-  {
-    id: '5',
-    name: 'Lisa Thompson',
-    email: 'lisa.t@company.com',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lisa',
-    role: 'QA Engineer',
-    status: 'active',
-    productivityScore: 85,
-    tasksCompleted: 42,
-    totalTasks: 48,
-  },
-];
-
-// Meetings
-export const mockMeetings: Meeting[] = [
-  {
-    id: '1',
-    title: 'Sprint Planning Q1 2025',
-    description: 'Planning session for the upcoming sprint',
-    meetingLink: 'https://meet.jit.si/sprint-planning-q1',
-    startTime: new Date(Date.now() + 2 * 60 * 60 * 1000),
-    endTime: new Date(Date.now() + 3 * 60 * 60 * 1000),
-    status: 'scheduled',
-    participants: mockTeamMembers.slice(0, 4),
-    summary: {
-      overview: 'Team aligned on Q1 priorities focusing on user dashboard improvements and API performance.',
-      keyPoints: [
-        'Dashboard redesign approved for February launch',
-        'API response time target: under 200ms',
-        'New team member onboarding next week',
-      ],
-      decisions: [
-        'Postpone mobile app update to Q2',
-        'Allocate 20% time for tech debt',
-      ],
-      actionItems: [
-        'Sarah to finalize wireframes by Friday',
-        'Michael to set up performance monitoring',
-        'Emily to conduct user research interviews',
-      ],
-      sentiment: 'positive',
-    },
-  },
-  {
-    id: '2',
-    title: 'Product Roadmap Review',
-    startTime: new Date(Date.now() - 24 * 60 * 60 * 1000),
-    endTime: new Date(Date.now() - 23 * 60 * 60 * 1000),
-    status: 'completed',
-    participants: mockTeamMembers.slice(0, 3),
-    transcript: [
-      { id: 't1', speaker: mockTeamMembers[0], text: "Let's review the product roadmap for Q2.", timestamp: new Date() },
-      { id: 't2', speaker: mockTeamMembers[1], text: "Customer feedback analysis is complete. Three new features prioritized.", timestamp: new Date() },
-      { id: 't3', speaker: mockTeamMembers[0], text: "We'll launch the beta program in March.", timestamp: new Date() },
-    ],
-    summary: {
-      overview: 'Reviewed and updated the product roadmap for the next quarter.',
-      keyPoints: [
-        'Customer feedback analysis completed',
-        'Three new feature requests prioritized',
-        'Budget allocation confirmed',
-      ],
-      decisions: [
-        'Launch beta program in March',
-        'Hire two additional developers',
-      ],
-      actionItems: [
-        'Create detailed specs for new features',
-        'Schedule stakeholder presentation',
-      ],
-      sentiment: 'positive',
-    },
-  },
-  {
-    id: '3',
-    title: 'Weekly Standup',
-    startTime: new Date(),
-    endTime: new Date(Date.now() + 30 * 60 * 1000),
-    status: 'live',
-    participants: mockTeamMembers,
-    meetingLink: 'https://meet.jit.si/weekly-standup',
-  },
-  {
-    id: '4',
-    title: 'Design Review Session',
-    meetingLink: 'https://meet.jit.si/design-review',
-    startTime: new Date(Date.now() + 26 * 60 * 60 * 1000),
-    endTime: new Date(Date.now() + 27 * 60 * 60 * 1000),
-    status: 'scheduled',
-    participants: mockTeamMembers.slice(2, 5),
-  },
-];
-
-// Tasks
-export const mockTasks: Task[] = [
-  {
-    id: '1',
-    title: 'Finalize dashboard wireframes',
-    description: 'Complete high-fidelity wireframes for the new dashboard',
-    status: 'in-progress',
-    priority: 'high',
-    assignee: mockTeamMembers[0],
-    dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
-    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-    updatedAt: new Date(),
-    isAutoGenerated: true,
-  },
-  {
-    id: '2',
-    title: 'Set up performance monitoring',
-    description: 'Implement APM tools for API monitoring',
-    status: 'todo',
-    priority: 'high',
-    assignee: mockTeamMembers[1],
-    dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
-    createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
-    updatedAt: new Date(),
-    isAutoGenerated: true,
-  },
-  {
-    id: '3',
-    title: 'Conduct user research interviews',
-    description: 'Interview 5 power users about dashboard preferences',
-    status: 'todo',
-    priority: 'medium',
-    assignee: mockTeamMembers[2],
-    dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
-    updatedAt: new Date(),
-    isAutoGenerated: true,
-  },
-  {
-    id: '4',
-    title: 'Fix login page bug',
-    description: 'Resolve session timeout issue on login',
-    status: 'review',
-    priority: 'urgent',
-    assignee: mockTeamMembers[3],
-    dueDate: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000),
-    createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
-    updatedAt: new Date(),
-    isAutoGenerated: false,
-  },
-  {
-    id: '5',
-    title: 'Write API documentation',
-    description: 'Document new endpoints for external developers',
-    status: 'done',
-    priority: 'medium',
-    assignee: mockTeamMembers[1],
-    dueDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
-    createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
-    updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
-    isAutoGenerated: true,
-    completedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
-  },
-  {
-    id: '6',
-    title: 'Database migration blocked',
-    description: 'Waiting for infrastructure team approval',
-    status: 'blocked',
-    priority: 'high',
-    assignee: mockTeamMembers[3],
-    dueDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-    createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-    updatedAt: new Date(),
-    isAutoGenerated: false,
-  },
-  {
-    id: '7',
-    title: 'Update onboarding flow',
-    description: 'Simplify the new user onboarding process',
-    status: 'in-progress',
-    priority: 'medium',
-    assignee: mockTeamMembers[2],
-    dueDate: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000),
-    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-    updatedAt: new Date(),
-    isAutoGenerated: true,
-  },
-  {
-    id: '8',
-    title: 'Prepare demo for stakeholders',
-    status: 'todo',
-    priority: 'high',
-    assignee: mockTeamMembers[0],
-    dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    isAutoGenerated: true,
-  },
-];
-
-// Kanban Columns
-export const mockKanbanColumns: KanbanColumn[] = [
-  { id: 'todo', title: 'To Do', tasks: mockTasks.filter(t => t.status === 'todo') },
-  { id: 'in-progress', title: 'In Progress', tasks: mockTasks.filter(t => t.status === 'in-progress') },
-  { id: 'review', title: 'Review', tasks: mockTasks.filter(t => t.status === 'review') },
-  { id: 'done', title: 'Done', tasks: mockTasks.filter(t => t.status === 'done') },
-  { id: 'blocked', title: 'Blocked', tasks: mockTasks.filter(t => t.status === 'blocked') },
-];
-
-// Notifications
-export const mockNotifications: Notification[] = [
-  {
-    id: '1',
-    type: 'task-assigned',
-    title: 'New Task Assigned',
-    message: 'You have been assigned "Finalize dashboard wireframes"',
-    timestamp: new Date(Date.now() - 30 * 60 * 1000),
-    isRead: false,
-    actionUrl: '/tasks/1',
-  },
-  {
-    id: '2',
-    type: 'deadline-approaching',
-    title: 'Deadline Tomorrow',
-    message: '"Fix login page bug" is due tomorrow',
-    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-    isRead: false,
-    actionUrl: '/tasks/4',
-  },
-  {
-    id: '3',
-    type: 'meeting-summary',
-    title: 'Meeting Summary Ready',
-    message: 'AI summary for "Product Roadmap Review" is available',
-    timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000),
-    isRead: true,
-    actionUrl: '/meetings/2',
-  },
-  {
-    id: '4',
-    type: 'ai-insight',
-    title: 'Productivity Insight',
-    message: 'Your team productivity increased 12% this week!',
-    timestamp: new Date(Date.now() - 48 * 60 * 60 * 1000),
-    isRead: true,
-  },
-];
-
-// Team Analytics
-export const mockWeeklyProgress: WeeklyProgress[] = [
-  { week: 'Week 1', tasksCompleted: 23, meetingsHeld: 8, productivityScore: 78 },
-  { week: 'Week 2', tasksCompleted: 28, meetingsHeld: 6, productivityScore: 82 },
-  { week: 'Week 3', tasksCompleted: 31, meetingsHeld: 7, productivityScore: 85 },
-  { week: 'Week 4', tasksCompleted: 35, meetingsHeld: 5, productivityScore: 88 },
-  { week: 'Week 5', tasksCompleted: 38, meetingsHeld: 6, productivityScore: 87 },
-  { week: 'Week 6', tasksCompleted: 42, meetingsHeld: 7, productivityScore: 91 },
-];
-
+export const mockTeamMembers: TeamMember[] = [];
+export const mockMeetings: Meeting[] = [];
+export const mockTasks: Task[] = [];
+export const mockNotifications: Notification[] = [];
+export const mockWeeklyProgress: WeeklyProgress[] = [];
 export const mockTeamAnalytics: TeamAnalytics = {
-  teamScore: 87,
-  trend: 'up',
-  memberMetrics: mockTeamMembers.map(member => ({
-    member,
-    contributionScore: member.productivityScore,
-    tasksCompleted: member.tasksCompleted,
-    meetingParticipation: Math.floor(Math.random() * 30) + 70,
-    trend: member.productivityScore > 85 ? 'up' : member.productivityScore > 75 ? 'stable' : 'down',
-  })),
-  weeklyProgress: mockWeeklyProgress,
+  teamScore: 0,
+  trend: "stable",
+  memberMetrics: [],
+  weeklyProgress: [],
 };
-
-// Education Mock Data
-export const mockClasses: Class[] = [
-  {
-    id: '1',
-    name: 'Introduction to Computer Science',
-    subject: 'Computer Science',
-    schedule: 'Mon, Wed, Fri 10:00 AM',
-    students: [],
-    teacher: {} as any,
-  },
-  {
-    id: '2',
-    name: 'Data Structures and Algorithms',
-    subject: 'Computer Science',
-    schedule: 'Tue, Thu 2:00 PM',
-    students: [],
-    teacher: {} as any,
-  },
-  {
-    id: '3',
-    name: 'Web Development Fundamentals',
-    subject: 'Computer Science',
-    schedule: 'Mon, Wed 3:00 PM',
-    students: [],
-    teacher: {} as any,
-  },
+export const mockKanbanColumns: KanbanColumn[] = [
+  { id: "todo", title: "To Do", tasks: [] },
+  { id: "in-progress", title: "In Progress", tasks: [] },
+  { id: "review", title: "Review", tasks: [] },
+  { id: "done", title: "Done", tasks: [] },
+  { id: "blocked", title: "Blocked", tasks: [] },
 ];
+export const mockClasses: Class[] = [];
+export const mockLectures: Lecture[] = [];
+export const mockAssignments: Assignment[] = [];
 
-export const mockLectures: Lecture[] = [
-  {
-    id: '1',
-    title: 'Introduction to Variables and Data Types',
-    class: mockClasses[0],
-    date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-    duration: 50,
-    status: 'completed',
-    summary: {
-      overview: 'Covered fundamental concepts of variables, data types, and basic operations in Python.',
-      keyPoints: [
-        'Variables as containers for storing data',
-        'Primitive data types: int, float, string, boolean',
-        'Type conversion and casting',
-        'Basic arithmetic operators',
-      ],
-      decisions: [],
-      actionItems: [
-        'Complete Chapter 2 exercises',
-        'Practice variable declarations',
-      ],
-      sentiment: 'positive',
-    },
-  },
-  {
-    id: '2',
-    title: 'Control Flow: Conditionals',
-    class: mockClasses[0],
-    date: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000),
-    duration: 50,
-    status: 'scheduled',
-  },
-  {
-    id: '3',
-    title: 'Binary Search Trees',
-    class: mockClasses[1],
-    date: new Date(),
-    duration: 75,
-    status: 'live',
-  },
-];
-
-export const mockAssignments: Assignment[] = [
-  {
-    id: '1',
-    title: 'Chapter 2 Exercises - Variables',
-    description: 'Complete all exercises from Chapter 2 focusing on variable declarations and data types.',
-    dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
-    sourceLecture: mockLectures[0],
-    status: 'pending',
-    isAutoGenerated: true,
-    priority: 'medium',
-  },
-  {
-    id: '2',
-    title: 'Build a Calculator App',
-    description: 'Create a simple calculator using Python that can perform basic arithmetic operations.',
-    dueDate: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
-    status: 'pending',
-    isAutoGenerated: true,
-    priority: 'high',
-  },
-  {
-    id: '3',
-    title: 'Binary Tree Implementation',
-    description: 'Implement a binary search tree with insert, delete, and search operations.',
-    dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    status: 'pending',
-    isAutoGenerated: true,
-    priority: 'high',
-  },
-  {
-    id: '4',
-    title: 'HTML/CSS Portfolio Page',
-    description: 'Create a personal portfolio webpage using HTML and CSS.',
-    dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-    status: 'pending',
-    isAutoGenerated: false,
-    priority: 'medium',
-  },
-];
-
-// Task statistics helpers
 export const getTaskStats = () => ({
-  total: mockTasks.length,
-  todo: mockTasks.filter(t => t.status === 'todo').length,
-  inProgress: mockTasks.filter(t => t.status === 'in-progress').length,
-  review: mockTasks.filter(t => t.status === 'review').length,
-  done: mockTasks.filter(t => t.status === 'done').length,
-  blocked: mockTasks.filter(t => t.status === 'blocked').length,
-  overdue: mockTasks.filter(t => t.dueDate && t.dueDate < new Date() && t.status !== 'done').length,
+  total: 0,
+  todo: 0,
+  inProgress: 0,
+  review: 0,
+  done: 0,
+  blocked: 0,
+  overdue: 0,
 });

@@ -13,13 +13,25 @@ import {
   Play,
   Users,
   Clock,
-  Zap
+  Zap,
+  User
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { useAuth } from '@/context/AuthContext';
 
 const Landing = () => {
+  const { user, logout } = useAuth();
+
   return (
     <div className="min-h-screen bg-background">
       {/* Navigation */}
@@ -37,12 +49,43 @@ const Landing = () => {
             <a href="#testimonials" className="text-muted-foreground hover:text-foreground transition-colors">Testimonials</a>
           </div>
           <div className="flex items-center gap-3">
-            <Link to="/auth">
-              <Button variant="outline">Sign In</Button>
-            </Link>
-            <Link to="/auth">
-              <Button>Sign Up</Button>
-            </Link>
+            {user ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="flex items-center gap-2">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={user.avatar ?? undefined} alt={user.name} />
+                      <AvatarFallback>{user.name.split(' ').map(n => n[0]).join('') || 'U'}</AvatarFallback>
+                    </Avatar>
+                    <span className="hidden sm:inline font-medium">{user.name}</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem asChild>
+                    <Link to="/profile" className="flex items-center gap-2">
+                      <User className="h-4 w-4" />
+                      Profile
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-destructive"
+                    onClick={() => logout()}
+                  >
+                    Sign Out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <>
+                <Link to="/auth">
+                  <Button variant="outline">Sign In</Button>
+                </Link>
+                <Link to="/auth">
+                  <Button>Sign Up</Button>
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </nav>

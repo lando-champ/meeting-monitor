@@ -40,8 +40,6 @@ const TeamMemberTasks = () => {
       sidebarItems={teamMemberSidebarItems}
       sidebarTitle="Team Member"
       sidebarSubtitle="Personal Workspace"
-      userName="Alex Kim"
-      userRole="Software Engineer"
     >
       <div className="space-y-6">
         {/* Page Header */}

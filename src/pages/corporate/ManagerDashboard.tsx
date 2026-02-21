@@ -28,8 +28,10 @@ import { Progress } from '@/components/ui/progress';
 import UploadMeeting from '@/components/meetings/UploadMeeting';
 import { mockTeamMembers, mockMeetings, mockTasks, getTaskStats, mockTeamAnalytics } from '@/data/mockData';
 import { format } from 'date-fns';
+import { useAuth } from '@/context/AuthContext';
 
 const ManagerDashboard = () => {
+  const { user } = useAuth();
   const { workspaceId = "alpha" } = useParams();
   const navigate = useNavigate();
   const basePath = `/business/manager/workspaces/${workspaceId}`;
@@ -51,14 +53,12 @@ const ManagerDashboard = () => {
       sidebarItems={managerSidebarItems}
       sidebarTitle="Manager"
       sidebarSubtitle="Business Dashboard"
-      userName="Sarah Chen"
-      userRole="Product Manager"
     >
       <div className="space-y-6">
         {/* Page Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Welcome back, Sarah</h1>
+            <h1 className="text-2xl font-bold">Welcome back, {user?.name?.split(' ')[0] ?? 'there'}</h1>
             <p className="text-muted-foreground">Here's what's happening with your team today.</p>
           </div>
           <div className="flex items-center gap-2">

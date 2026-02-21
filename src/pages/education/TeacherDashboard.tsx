@@ -20,8 +20,10 @@ import { format } from 'date-fns';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEducation } from '@/context/EducationContext';
 import { useClass } from '@/context/ClassContext';
+import { useAuth } from '@/context/AuthContext';
 
 const TeacherDashboard = () => {
+  const { user } = useAuth();
   const { classId = "cs101" } = useParams();
   const navigate = useNavigate();
   const basePath = `/education/teacher/classes/${classId}`;
@@ -48,16 +50,13 @@ const TeacherDashboard = () => {
       sidebarItems={teacherSidebarItems}
       sidebarTitle="Teacher"
       sidebarSubtitle="Education Dashboard"
-      userName="Prof. James Wilson"
-      userRole="Computer Science"
-      userAvatar="https://api.dicebear.com/7.x/avataaars/svg?seed=James"
       showMeetingStatus={false}
     >
       <div className="space-y-6">
         {/* Page Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Good morning, Professor</h1>
+            <h1 className="text-2xl font-bold">Good morning, {user?.name?.split(' ')[0] ?? 'there'}</h1>
             <p className="text-muted-foreground">You have {upcomingLectures.length} lectures scheduled today.</p>
           </div>
           <Button

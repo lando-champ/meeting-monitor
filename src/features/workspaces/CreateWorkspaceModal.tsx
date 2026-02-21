@@ -18,6 +18,8 @@ const CreateWorkspaceModal = () => {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const isValid = useMemo(
     () => Boolean(name.trim() && description.trim() && inviteCode.trim()),
     [name, description, inviteCode],
@@ -28,18 +30,26 @@ const CreateWorkspaceModal = () => {
     setInviteCode(`WS-${seed}`);
   };
 
-  const handleCreate = () => {
-    if (!isValid) {
-      return;
+  const handleCreate = async () => {
+    if (!isValid || loading) return;
+    setError("");
+    setLoading(true);
+    try {
+      await createWorkspace(name.trim(), description.trim(), inviteCode.trim());
+      setName("");
+      setDescription("");
+      setInviteCode("");
+      setOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create project");
+    } finally {
+      setLoading(false);
     }
-    createWorkspace(name.trim(), description.trim(), inviteCode.trim());
-    setName("");
-    setDescription("");
-    setInviteCode("");
   };
 
+  const [open, setOpen] = useState(false);
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button>
           <PlusCircle className="h-4 w-4 mr-2" />
@@ -77,10 +87,11 @@ const CreateWorkspaceModal = () => {
           <div className="text-xs text-muted-foreground">
             Invite codes are required and cannot be changed after creation.
           </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
         <DialogFooter>
-          <Button variant="secondary" onClick={handleCreate} disabled={!isValid}>
-            Create Project
+          <Button variant="secondary" onClick={handleCreate} disabled={!isValid || loading}>
+            {loading ? "Creating…" : "Create Project"}
           </Button>
         </DialogFooter>
       </DialogContent>
