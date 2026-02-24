@@ -51,7 +51,8 @@ class STTPipeline:
         self._buffer = bytearray()
         self._bytes_per_chunk = int(self.sample_rate * self.buffer_seconds * 2)
         self._last_transcribe_time = 0.0
-        self._min_interval = 6.0
+        # Minimum interval between Groq calls; tied to buffer size so streaming is continuous
+        self._min_interval = self.buffer_seconds
         self._client: Optional[Groq] = None
         self._lock = asyncio.Lock()
 
@@ -80,8 +81,13 @@ class STTPipeline:
         async with self._lock:
             if len(self._buffer) < self._bytes_per_chunk:
                 return
+            # Take a window of audio for this segment, but keep a small tail
+            # in the buffer so successive segments have overlap and better context.
             chunk = bytes(self._buffer[: self._bytes_per_chunk])
-            del self._buffer[: self._bytes_per_chunk]
+            overlap_seconds = min(0.5, self.buffer_seconds / 2.0)
+            overlap_bytes = int(self.sample_rate * overlap_seconds * 2)
+            trim_bytes = max(0, self._bytes_per_chunk - overlap_bytes)
+            del self._buffer[:trim_bytes]
         self._last_transcribe_time = time.monotonic()
 
         wav_bytes = _pcm_to_wav(chunk, self.sample_rate)
@@ -96,6 +102,7 @@ class STTPipeline:
                 model="whisper-large-v3-turbo",
                 response_format="verbose_json",
                 language="en",
+                temperature=0.0,
             )
         except Exception as e:
             logger.exception("Groq Whisper transcription failed: %s", e)

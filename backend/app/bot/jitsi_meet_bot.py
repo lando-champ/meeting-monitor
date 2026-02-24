@@ -110,13 +110,20 @@ class JitsiMeetBot(BaseBot):
             log.exception("Audio capture start failed: %s", e)
             raise RuntimeError(f"Audio capture start failed: {e}") from e
         self._running = True
+        # Continuous non-blocking loop: reconnect on failures, keep sending audio frames.
         while self._running:
             try:
                 async with websockets.connect(callback_url) as ws:
                     log.info("Bot connected to audio callback %s", callback_url)
                     chunk_count = 0
                     while self._running:
-                        chunk = await self._capture.get_audio_chunk()
+                        try:
+                            # Small timeout so we can detect stalled capture and keep WS alive.
+                            chunk = await asyncio.wait_for(self._capture.get_audio_chunk(), timeout=5.0)
+                        except asyncio.TimeoutError:
+                            # Heartbeat to keep connection open even if capture is briefly silent.
+                            await ws.send(b"")
+                            continue
                         if chunk:
                             await ws.send(chunk)
                             chunk_count += 1

@@ -27,7 +27,8 @@ class WebSocketManager:
     def ensure_pipeline(self, meeting_id: str) -> None:
         if meeting_id in self._pipelines:
             return
-        self._processors[meeting_id] = AudioProcessor()
+        # Use VAD to drop non-speech and reduce hallucinated text
+        self._processors[meeting_id] = AudioProcessor(use_vad=True)
         async def push(mid: str, text: str):
             await self.broadcast_transcript(mid, text)
         self._pipelines[meeting_id] = STTPipeline(

@@ -333,10 +333,10 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
                           <tr key={i} className="border-b last:border-0">
                             <td className="px-4 py-2 font-medium">{a.participant_name}</td>
                             <td className="px-4 py-2 text-muted-foreground">
-                              {a.join_time ? format(new Date(a.join_time), "h:mm a") : "—"}
+                              {a.join_time ? format(new Date(a.join_time), "PPpp") : "—"}
                             </td>
                             <td className="px-4 py-2 text-muted-foreground">
-                              {a.leave_time ? format(new Date(a.leave_time), "h:mm a") : "In meeting"}
+                              {a.leave_time ? format(new Date(a.leave_time), "PPpp") : "In meeting"}
                             </td>
                             <td className="px-4 py-2 text-muted-foreground">
                               {a.duration_seconds != null ? `${Math.round(a.duration_seconds)}s` : "—"}

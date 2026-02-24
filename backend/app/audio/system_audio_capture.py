@@ -38,9 +38,11 @@ class SystemAudioCapture:
         self._running = False
 
     def _callback(self, indata, frames, time_info, status):
-        if status:
+        if not self._running:
             return
-        # indata is float32; convert to int16 PCM
+        if status:
+            logger.warning("Audio capture status: %s", status)
+        # indata is float32; convert to int16 PCM in small frames
         buf = []
         for x in indata.flatten():
             s = max(-1, min(1, x))
