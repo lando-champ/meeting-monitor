@@ -235,11 +235,98 @@ export async function listProjects(
   return res.json();
 }
 
-export async function getProject(token: string, projectId: string): Promise<ApiProject> {
+export interface ApiTask {
+  id: string;
+  project_id: string;
+  title: string;
+  description: string | null;
+  status: "todo" | "in_progress" | "in_review" | "done" | "blockers";
+  priority: "low" | "medium" | "high" | "urgent";
+  assignee_id: string | null;
+  due_date: string | null;
+  subtasks: string[] | null;
+  source_meeting_id: string | null;
+  is_auto_generated: boolean;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+export interface ApiProjectWithTasks extends ApiProject {
+  tasks: ApiTask[];
+}
+
+export async function getProject(token: string, projectId: string): Promise<ApiProjectWithTasks> {
   const res = await fetch(`${apiBaseUrl}/api/v1/projects/${projectId}`, {
     headers: getAuthHeaders(token),
   });
   if (!res.ok) throw new Error("Failed to load project");
+  return res.json();
+}
+
+export async function createProjectTask(
+  token: string,
+  projectId: string,
+  data: {
+    title: string;
+    description?: string;
+    status?: ApiTask["status"];
+    priority?: ApiTask["priority"];
+    assignee_id?: string | null;
+    due_date?: string | null;
+    subtasks?: string[] | null;
+  }
+): Promise<ApiTask> {
+  const res = await fetch(`${apiBaseUrl}/api/v1/projects/${projectId}/tasks`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders(token) },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(typeof err.detail === "string" ? err.detail : "Failed to create task");
+  }
+  return res.json();
+}
+
+export async function updateProjectTask(
+  token: string,
+  projectId: string,
+  taskId: string,
+  data: Partial<{
+    title: string;
+    description: string | null;
+    status: ApiTask["status"];
+    priority: ApiTask["priority"];
+    assignee_id: string | null;
+    due_date: string | null;
+    subtasks: string[] | null;
+  }>
+): Promise<ApiTask> {
+  const res = await fetch(`${apiBaseUrl}/api/v1/projects/${projectId}/tasks/${taskId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders(token) },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(typeof err.detail === "string" ? err.detail : "Failed to update task");
+  }
+  return res.json();
+}
+
+export async function extractProjectTasks(
+  token: string,
+  projectId: string
+): Promise<{ message: string; project_id: string }> {
+  const res = await fetch(`${apiBaseUrl}/api/v1/projects/${projectId}/extract-tasks`, {
+    method: "POST",
+    headers: getAuthHeaders(token),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(typeof err.detail === "string" ? err.detail : "Failed to extract tasks");
+  }
   return res.json();
 }
 

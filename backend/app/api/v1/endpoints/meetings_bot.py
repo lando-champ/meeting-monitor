@@ -212,12 +212,15 @@ async def stop_meeting(
     meeting_id: str,
     current_user: User = Depends(get_current_active_user),
 ):
-    """Stop bot, set meeting ended, run summary + action items."""
+    """Stop bot, set meeting ended, run summary + action items, then extract tasks to Kairox if project linked."""
+    import asyncio
     db = await get_database()
     try:
         oid = ObjectId(meeting_id)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid meeting ID")
+    meeting = await db.meetings.find_one({"_id": oid})
+    project_id = (meeting or {}).get("project_id") if meeting else None
     if _bot_manager:
         await _bot_manager.stop_bot(meeting_id)
     ws_manager.remove_meeting(meeting_id)
@@ -228,6 +231,12 @@ async def stop_meeting(
     nlp = get_nlp_service()
     await nlp.generate_summary(meeting_id, "en")
     await nlp.extract_action_items(meeting_id, "en")
+    if project_id:
+        try:
+            from app.services.project_task_extractor import sync_tasks_to_kairox
+            asyncio.create_task(sync_tasks_to_kairox(project_id))
+        except Exception:
+            pass
     return {"message": "Meeting stopped", "meeting_id": meeting_id}
 
 

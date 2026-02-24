@@ -66,8 +66,8 @@ export interface Decision {
   timestamp: Date;
 }
 
-// Task Types
-export type TaskStatus = 'todo' | 'in-progress' | 'review' | 'done' | 'blocked';
+// Task Types — Kairox Kanban: 5 columns (To Do, In Progress, In Review, Done, Blockers)
+export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done' | 'blockers';
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 
 export interface Task {
@@ -77,7 +77,10 @@ export interface Task {
   status: TaskStatus;
   priority: TaskPriority;
   assignee?: TeamMember;
+  assignee_id?: string | null;
   dueDate?: Date;
+  due_date?: string | null;
+  subtasks?: string[];
   sourceMeeting?: Meeting;
   createdAt: Date;
   updatedAt: Date;

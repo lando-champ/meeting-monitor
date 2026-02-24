@@ -28,10 +28,10 @@ export const mockTeamAnalytics: TeamAnalytics = {
 };
 export const mockKanbanColumns: KanbanColumn[] = [
   { id: "todo", title: "To Do", tasks: [] },
-  { id: "in-progress", title: "In Progress", tasks: [] },
-  { id: "review", title: "Review", tasks: [] },
+  { id: "in_progress", title: "In Progress", tasks: [] },
+  { id: "in_review", title: "In Review", tasks: [] },
   { id: "done", title: "Done", tasks: [] },
-  { id: "blocked", title: "Blocked", tasks: [] },
+  { id: "blockers", title: "Blockers", tasks: [] },
 ];
 export const mockClasses: Class[] = [];
 export const mockLectures: Lecture[] = [];

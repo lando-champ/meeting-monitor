@@ -1,7 +1,9 @@
 from pydantic import BaseModel
-from typing import Literal, Optional
+from typing import Literal, Optional, List
 from datetime import datetime
 from bson import ObjectId
+
+from app.models.task import Task
 
 
 class MemberInfo(BaseModel):
@@ -36,3 +38,8 @@ class Project(ProjectBase):
 class ProjectOut(Project):
     """Project response with member details (name, email) for display."""
     member_details: list[MemberInfo] = []
+
+
+class ProjectDetail(ProjectOut):
+    """Project with tasks for Kairox board (GET project detail)."""
+    tasks: List[Task] = []

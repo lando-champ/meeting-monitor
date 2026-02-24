@@ -171,8 +171,8 @@ const TeamMemberDashboard = () => {
                           variant="secondary" 
                           className={`text-xs ${
                             task.status === 'done' ? 'bg-success/10 text-success' :
-                            task.status === 'in-progress' ? 'bg-primary/10 text-primary' :
-                            task.status === 'blocked' ? 'bg-destructive/10 text-destructive' :
+                            task.status === 'in_progress' ? 'bg-primary/10 text-primary' :
+                            task.status === 'blockers' ? 'bg-destructive/10 text-destructive' :
                             ''
                           }`}
                         >

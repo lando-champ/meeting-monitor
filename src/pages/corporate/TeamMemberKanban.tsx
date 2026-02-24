@@ -46,10 +46,10 @@ import {
 
 const columnColors: Record<string, string> = {
   todo: "border-t-muted-foreground",
-  "in-progress": "border-t-primary",
-  review: "border-t-warning",
+  in_progress: "border-t-primary",
+  in_review: "border-t-amber-500",
   done: "border-t-success",
-  blocked: "border-t-destructive",
+  blockers: "border-t-destructive",
 };
 
 const TeamMemberKanban = () => {
@@ -86,10 +86,10 @@ const TeamMemberKanban = () => {
     () =>
       ({
         todo: { id: "todo", title: "To Do" },
-        "in-progress": { id: "in-progress", title: "In Progress" },
-        review: { id: "review", title: "Review" },
+        in_progress: { id: "in_progress", title: "In Progress" },
+        in_review: { id: "in_review", title: "In Review" },
         done: { id: "done", title: "Done" },
-        blocked: { id: "blocked", title: "Blockers" },
+        blockers: { id: "blockers", title: "Blockers" },
       }) satisfies Record<TaskStatus, { id: TaskStatus; title: string }>,
     []
   );
@@ -396,10 +396,10 @@ const TeamMemberKanban = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todo">Todo</SelectItem>
-                    <SelectItem value="in-progress">In Progress</SelectItem>
-                    <SelectItem value="review">Review</SelectItem>
+                    <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="in_review">In Review</SelectItem>
                     <SelectItem value="done">Done</SelectItem>
-                    <SelectItem value="blocked">Blocked</SelectItem>
+                    <SelectItem value="blockers">Blockers</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

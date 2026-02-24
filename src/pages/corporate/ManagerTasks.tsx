@@ -82,7 +82,7 @@ const ManagerTasks = () => {
   }, [tasks, workspaceId]);
 
   const overdueTasks = tasks.filter(t => t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'done');
-  const inProgressTasks = tasks.filter(t => t.status === 'in-progress');
+  const inProgressTasks = tasks.filter(t => t.status === 'in_progress');
   const todoTasks = tasks.filter(t => t.status === 'todo');
   const completedTasks = tasks.filter(t => t.status === 'done');
 
@@ -166,10 +166,10 @@ const ManagerTasks = () => {
                       <SelectContent>
                         <SelectItem value="all">All</SelectItem>
                         <SelectItem value="todo">Todo</SelectItem>
-                        <SelectItem value="in-progress">In Progress</SelectItem>
-                        <SelectItem value="review">Review</SelectItem>
+                        <SelectItem value="in_progress">In Progress</SelectItem>
+                        <SelectItem value="in_review">In Review</SelectItem>
                         <SelectItem value="done">Done</SelectItem>
-                        <SelectItem value="blocked">Blocked</SelectItem>
+                        <SelectItem value="blockers">Blockers</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -258,10 +258,10 @@ const ManagerTasks = () => {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="todo">Todo</SelectItem>
-                          <SelectItem value="in-progress">In Progress</SelectItem>
-                          <SelectItem value="review">Review</SelectItem>
+                          <SelectItem value="in_progress">In Progress</SelectItem>
+                          <SelectItem value="in_review">In Review</SelectItem>
                           <SelectItem value="done">Done</SelectItem>
-                          <SelectItem value="blocked">Blocked</SelectItem>
+                          <SelectItem value="blockers">Blockers</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

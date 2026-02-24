@@ -9,6 +9,20 @@ from datetime import datetime
 
 router = APIRouter()
 
+# Normalize legacy status values to Kairox 5-column statuses
+def _normalize_status(s: Optional[str]) -> str:
+    if not s:
+        return "todo"
+    m = {"in-progress": "in_progress", "review": "in_review", "blocked": "blockers"}
+    return m.get(s, s)
+
+
+def _task_doc_to_model(d: dict) -> Task:
+    d = dict(d)
+    d["id"] = str(d.pop("_id", d.get("id", "")))
+    d["status"] = _normalize_status(d.get("status"))
+    return Task(**{k: v for k, v in d.items() if k != "_id"})
+
 @router.post("", response_model=Task, status_code=status.HTTP_201_CREATED)
 async def create_task(
     task_data: TaskCreate,
@@ -21,6 +35,7 @@ async def create_task(
     await verify_project_membership(task_data.project_id, current_user)
     
     task_dict = task_data.model_dump()
+    task_dict["status"] = _normalize_status(task_dict.get("status"))
     task_dict["is_auto_generated"] = False
     task_dict["created_at"] = datetime.utcnow()
     task_dict["updated_at"] = datetime.utcnow()
@@ -52,7 +67,7 @@ async def list_tasks(
         query["status"] = status
     
     tasks = await db.tasks.find(query).sort("created_at", -1).to_list(length=100)
-    return [Task(id=str(t["_id"]), **{k: v for k, v in t.items() if k != "_id"}) for t in tasks]
+    return [_task_doc_to_model(t) for t in tasks]
 
 @router.get("/{task_id}", response_model=Task)
 async def get_task(task_id: str, current_user: User = Depends(get_current_user)):
@@ -66,7 +81,7 @@ async def get_task(task_id: str, current_user: User = Depends(get_current_user))
     # Verify project access
     await verify_project_membership(task["project_id"], current_user)
     
-    return Task(id=str(task["_id"]), **{k: v for k, v in task.items() if k != "_id"})
+    return _task_doc_to_model(task)
 
 @router.patch("/{task_id}", response_model=Task)
 async def update_task(
@@ -85,7 +100,9 @@ async def update_task(
     await verify_project_membership(task["project_id"], current_user)
     
     update_data = task_update.model_dump(exclude_unset=True)
-    if task_update.status == "done" and not update_data.get("completed_at"):
+    if "status" in update_data:
+        update_data["status"] = _normalize_status(update_data["status"])
+    if update_data.get("status") == "done" and not update_data.get("completed_at"):
         update_data["completed_at"] = datetime.utcnow()
     update_data["updated_at"] = datetime.utcnow()
     
@@ -95,7 +112,7 @@ async def update_task(
     )
     
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
-    return Task(id=str(updated["_id"]), **{k: v for k, v in updated.items() if k != "_id"})
+    return _task_doc_to_model(updated)
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_task(task_id: str, current_user: User = Depends(get_current_user)):
