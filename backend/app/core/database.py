@@ -1,4 +1,5 @@
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo.errors import OperationFailure
 from app.core.config import settings
 import asyncio
 
@@ -23,47 +24,51 @@ async def init_db():
     print("✅ Database indexes created")
 
 async def create_indexes():
-    """Create database indexes for performance"""
+    """Create database indexes for performance. Idempotent: does not crash if index already exists."""
     database = db.client[settings.MONGODB_DB_NAME]
-    
+
+    async def ensure_index(coll, key, **opts):
+        try:
+            await coll.create_index(key, **opts)
+        except OperationFailure as e:
+            if e.code in (85, 86) or "already exists" in (e.details or {}).get("errmsg", "").lower():
+                pass
+            else:
+                raise
+
     # Users collection indexes
-    await database.users.create_index("email", unique=True)
-    await database.users.create_index("role")
-    
+    await ensure_index(database.users, "email", unique=True)
+    await ensure_index(database.users, "role")
+
     # Projects collection indexes
-    await database.projects.create_index("invite_code", unique=True)
-    await database.projects.create_index("owner_id")
-    await database.projects.create_index("members")
-    await database.projects.create_index("project_type")
-    
-    # Meetings collection indexes (Phase 1 lifecycle schema)
-    await database.meetings.create_index("room_name", unique=True)
-    await database.meetings.create_index("project_id")
-    await database.meetings.create_index("status")
-    await database.meetings.create_index("start_time")
-    await database.meetings.create_index([("project_id", 1), ("status", 1)])
-    
-    # Attendance collection indexes
-    await database.attendance.create_index("meeting_id")
-    await database.attendance.create_index("user_id")
-    await database.attendance.create_index([("meeting_id", 1), ("user_id", 1)], unique=True)
-    
-    # Transcripts collection indexes
-    await database.transcripts.create_index("meeting_id")
-    await database.transcripts.create_index("user_id")
-    await database.transcripts.create_index("timestamp")
-    await database.transcripts.create_index([("meeting_id", 1), ("timestamp", 1)])
-    
+    await ensure_index(database.projects, "invite_code", unique=True)
+    await ensure_index(database.projects, "owner_id")
+    await ensure_index(database.projects, "members")
+    await ensure_index(database.projects, "project_type")
+
+    # Meeting bot collections (default names; idempotent)
+    await ensure_index(database.meetings, "project_id")
+    await ensure_index(database.meetings, "status")
+    await ensure_index(database.meetings, "started_at")
+    await ensure_index(database.transcript_segments, "meeting_id")
+    await ensure_index(database.transcript_segments, "timestamp")
+    await ensure_index(database.transcripts, "meeting_id")
+    await ensure_index(database.transcripts, "timestamp")
+    await ensure_index(database.attendance_records, "meeting_id")
+    await ensure_index(database.attendance_records, "participant_id")
+    await ensure_index(database.summaries, "meeting_id")
+    await ensure_index(database.action_items, "meeting_id")
+
     # Tasks collection indexes
-    await database.tasks.create_index("project_id")
-    await database.tasks.create_index("assignee_id")
-    await database.tasks.create_index("status")
-    await database.tasks.create_index("source_meeting_id")
-    await database.tasks.create_index([("project_id", 1), ("status", 1)])
-    
+    await ensure_index(database.tasks, "project_id")
+    await ensure_index(database.tasks, "assignee_id")
+    await ensure_index(database.tasks, "status")
+    await ensure_index(database.tasks, "source_meeting_id")
+    await ensure_index(database.tasks, [("project_id", 1), ("status", 1)])
+
     # Documents collection indexes (for team member documents)
-    await database.documents.create_index("workspace_id")
-    await database.documents.create_index("name")
+    await ensure_index(database.documents, "workspace_id")
+    await ensure_index(database.documents, "name")
 
 async def close_db():
     """Close database connection"""

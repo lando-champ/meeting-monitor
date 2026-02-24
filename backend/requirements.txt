@@ -12,3 +12,10 @@ python-dotenv
 groq
 aiofiles
 pydantic[email]
+# Meeting bot: audio + Selenium
+sounddevice
+numpy
+webrtcvad
+selenium
+webdriver-manager
+websockets

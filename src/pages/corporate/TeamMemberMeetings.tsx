@@ -7,24 +7,95 @@ import {
   Video,
   Clock,
   CheckCircle2,
-  Play
+  Play,
+  ExternalLink,
+  Loader2,
 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { SidebarItem } from '@/components/layout/Sidebar';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import UploadMeeting from '@/components/meetings/UploadMeeting';
 import { mockMeetings } from '@/data/mockData';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/context/AuthContext';
+import { listMeetings, createMeeting, startMeeting, type MeetingBotListItem } from '@/lib/api';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 const TeamMemberMeetings = () => {
   const { workspaceId = "alpha" } = useParams();
   const navigate = useNavigate();
+  const { token } = useAuth();
   const basePath = `/business/member/workspaces/${workspaceId}`;
+  const [botMeetings, setBotMeetings] = useState<MeetingBotListItem[]>([]);
+  const [botMeetingsLoading, setBotMeetingsLoading] = useState(false);
+  const [liveBotOpen, setLiveBotOpen] = useState(false);
+  const [liveBotTitle, setLiveBotTitle] = useState('');
+  const [liveBotUrl, setLiveBotUrl] = useState('');
+  const [liveBotError, setLiveBotError] = useState('');
+  const [liveBotStarting, setLiveBotStarting] = useState(false);
+
+  const fetchBotMeetings = useCallback(async () => {
+    if (!token || !workspaceId) return;
+    setBotMeetingsLoading(true);
+    try {
+      const { meetings: list } = await listMeetings(token, workspaceId);
+      setBotMeetings(list);
+    } catch {
+      setBotMeetings([]);
+    } finally {
+      setBotMeetingsLoading(false);
+    }
+  }, [token, workspaceId]);
+
+  useEffect(() => {
+    fetchBotMeetings();
+  }, [fetchBotMeetings]);
+
+  const handleStartLiveMeeting = async () => {
+    if (!token || !liveBotUrl.trim()) {
+      setLiveBotError('Meeting URL is required (e.g. Jitsi Meet link).');
+      return;
+    }
+    const url = liveBotUrl.trim();
+    if (!/^https?:\/\//i.test(url)) {
+      setLiveBotError('URL must start with http:// or https://');
+      return;
+    }
+    setLiveBotError('');
+    setLiveBotStarting(true);
+    try {
+      const { id } = await createMeeting(token, {
+        project_id: workspaceId,
+        title: liveBotTitle.trim() || 'Live Meeting',
+        meeting_url: url,
+      });
+      await startMeeting(token, id, { meeting_url: url, project_id: workspaceId, title: liveBotTitle.trim() || 'Live Meeting' });
+      setLiveBotOpen(false);
+      setLiveBotTitle('');
+      setLiveBotUrl('');
+      navigate(`${basePath}/meeting/${id}`);
+    } catch (e) {
+      setLiveBotError(e instanceof Error ? e.message : 'Failed to start meeting');
+    } finally {
+      setLiveBotStarting(false);
+    }
+  };
   const teamMemberSidebarItems: SidebarItem[] = [
     { title: 'Dashboard', href: `${basePath}/dashboard`, icon: LayoutDashboard },
     { title: 'Meetings', href: `${basePath}/meetings`, icon: Calendar },

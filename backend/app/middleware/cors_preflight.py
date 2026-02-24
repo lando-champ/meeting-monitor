@@ -18,7 +18,7 @@ class CORSPreflightMiddleware:
             await self.app(scope, receive, send)
             return
         origin = next((v for k, v in scope.get("headers", []) if k == b"origin"), b"").decode("utf-8") or ""
-        # Allow request origin if in list, or if it's a localhost/127.0.0.1 origin (dev)
+        # Allow request origin if in list, or any localhost/127.0.0.1 (e.g. frontend :8080, backend :8001)
         if origin and (origin in self.allow_origins or origin.startswith(("http://localhost:", "http://127.0.0.1:"))):
             allow_origin = origin
         else:

@@ -29,9 +29,17 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
-    # Jitsi (self-hosted)
-    JITSI_DOMAIN: str = "https://meet.jit.si"
-    
+    # Meeting bot: backend URL for WebSocket and API (bot connects here)
+    # If not set in env, bot_manager will fall back to http://localhost:{PORT}
+    BACKEND_URL: str = ""
+
+    # Audio capture & STT (must match what bot sends)
+    AUDIO_SAMPLE_RATE: int = 16000
+    AUDIO_CHANNELS: int = 1
+    AUDIO_CHUNK_SIZE: int = 1024
+    # STT buffer seconds before calling Whisper (smaller = faster first transcript, more API calls)
+    STT_BUFFER_SECONDS: float = 3.0
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def parse_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:

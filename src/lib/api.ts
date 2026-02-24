@@ -77,6 +77,115 @@ export function getAuthHeaders(token: string): HeadersInit {
   return { Authorization: `Bearer ${token}` };
 }
 
+/** WebSocket base URL for live meeting transcript (ws or wss from API host). */
+export function getWsBaseUrl(): string {
+  const u = apiBaseUrl.replace(/^http/, "ws");
+  return u.endsWith("/") ? u.slice(0, -1) : u;
+}
+
+// --- Meeting bot: create, start, stop, get detail, live transcript ---
+
+export interface MeetingBotDetail {
+  meeting: { id: string; project_id?: string; title?: string; status: string; meeting_url?: string; started_at?: string; ended_at?: string };
+  transcript_segments: { text: string; timestamp: string }[];
+  transcripts: { text: string; timestamp: string }[];
+  attendance: {
+    participant_id: string;
+    participant_name: string;
+    join_time?: string;
+    leave_time?: string;
+    duration_seconds?: number;
+    meeting_role?: string;
+  }[];
+  summary: { summary_text?: string; key_points?: string[] } | null;
+  action_items: { text: string; status: string }[];
+  total_participants?: number;
+  total_duration?: number | null;
+}
+
+export async function createMeeting(
+  token: string,
+  data: { project_id?: string; title?: string; meeting_url?: string }
+): Promise<{ id: string; meeting_id: string }> {
+  const res = await fetch(`${apiBaseUrl}/api/v1/meetings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders(token) },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to create meeting");
+  return res.json();
+}
+
+export async function startMeeting(
+  token: string,
+  meetingId: string,
+  body: { meeting_url: string; project_id?: string; title?: string }
+): Promise<{ message: string; meeting_id: string }> {
+  const res = await fetch(`${apiBaseUrl}/api/v1/meetings/${meetingId}/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders(token) },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error("Failed to start meeting");
+  return res.json();
+}
+
+export async function stopMeeting(
+  token: string,
+  meetingId: string
+): Promise<{ message: string; meeting_id: string }> {
+  const res = await fetch(`${apiBaseUrl}/api/v1/meetings/${meetingId}/stop`, {
+    method: "POST",
+    headers: getAuthHeaders(token),
+  });
+  if (!res.ok) throw new Error("Failed to stop meeting");
+  return res.json();
+}
+
+export async function getMeetingDetail(token: string, meetingId: string): Promise<MeetingBotDetail> {
+  const res = await fetch(`${apiBaseUrl}/api/v1/meetings/${meetingId}`, {
+    headers: getAuthHeaders(token),
+  });
+  if (!res.ok) throw new Error("Failed to load meeting");
+  return res.json();
+}
+
+export async function generateMeetingSummary(
+  token: string,
+  meetingId: string,
+  language?: string
+): Promise<{ message: string; meeting_id: string }> {
+  const res = await fetch(`${apiBaseUrl}/api/v1/meetings/${meetingId}/generate-summary`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders(token) },
+    body: JSON.stringify({ language: language ?? "en" }),
+  });
+  if (!res.ok) throw new Error("Failed to generate summary");
+  return res.json();
+}
+
+export interface MeetingBotListItem {
+  id: string;
+  project_id?: string;
+  title?: string;
+  status: string;
+  meeting_url?: string;
+  started_at?: string;
+  ended_at?: string;
+}
+
+export async function listMeetings(
+  token: string,
+  projectId?: string
+): Promise<{ meetings: MeetingBotListItem[] }> {
+  const url = projectId
+    ? `${apiBaseUrl}/api/v1/meetings?project_id=${encodeURIComponent(projectId)}`
+    : `${apiBaseUrl}/api/v1/meetings`;
+  const res = await fetch(url, { headers: getAuthHeaders(token) });
+  if (!res.ok) throw new Error("Failed to load meetings");
+  return res.json();
+}
+
 // --- Projects (workspaces & classes) - stored in database ---
 
 export interface ProjectMember {

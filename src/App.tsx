@@ -1,3 +1,4 @@
+import { Component, type ReactNode } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -19,6 +20,31 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+class AuthErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error: Error) {
+    if (error?.message?.includes("useAuth must be used within AuthProvider")) {
+      this.setState({ hasError: true });
+    }
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <div className="text-center space-y-2">
+            <p className="text-muted-foreground">Session issue. Redirecting to login…</p>
+            <a href="/auth" className="text-primary underline">Go to login</a>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -28,6 +54,7 @@ const App = () => (
       <WorkspaceProvider>
         <ClassProvider>
           <EducationProvider>
+          <AuthErrorBoundary>
           <BrowserRouter>
             <Routes>
               {/* Public */}
@@ -56,6 +83,7 @@ const App = () => (
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
+          </AuthErrorBoundary>
           </EducationProvider>
         </ClassProvider>
       </WorkspaceProvider>

@@ -1,13 +1,16 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, meetings, projects, tasks, websocket, attendance, transcripts, recordings
+from app.api.v1.endpoints import auth, projects, tasks, recordings, meeting_bot_ws, meetings_bot
+
+from app.bot.bot_manager import bot_manager
 
 api_router = APIRouter()
 
 api_router.include_router(auth.router, prefix="/auth", tags=["authentication"])
 api_router.include_router(projects.router, prefix="/projects", tags=["projects"])
-api_router.include_router(meetings.router, prefix="/meetings", tags=["meetings"])
 api_router.include_router(recordings.router, prefix="/recordings", tags=["recordings"])
 api_router.include_router(tasks.router, prefix="/tasks", tags=["tasks"])
-api_router.include_router(attendance.router, prefix="/attendance", tags=["attendance"])
-api_router.include_router(transcripts.router, prefix="/transcripts", tags=["transcripts"])
-api_router.include_router(websocket.router, prefix="/ws", tags=["websocket"])
+api_router.include_router(meeting_bot_ws.router, prefix="/ws", tags=["meeting-bot-ws"])
+api_router.include_router(meetings_bot.router, prefix="/meetings", tags=["meetings"])
+
+# Wire bot manager into meeting routes (start/stop)
+meetings_bot.set_bot_manager(bot_manager)

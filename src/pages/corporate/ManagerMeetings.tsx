@@ -11,13 +11,15 @@ import {
   Clock,
   CheckCircle2,
   Play,
+  Square,
   Upload,
   FileText,
   MessageSquare,
   ChevronDown,
   ChevronRight,
   Loader2,
-  FileAudio
+  FileAudio,
+  ExternalLink,
 } from 'lucide-react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { SidebarItem } from '@/components/layout/Sidebar';
@@ -37,7 +39,15 @@ import { cn } from '@/lib/utils';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { listMeetingRecordings, type MeetingRecordingApi } from '@/lib/api';
+import {
+  listMeetingRecordings,
+  createMeeting,
+  startMeeting,
+  stopMeeting,
+  listMeetings,
+  type MeetingRecordingApi,
+  type MeetingBotListItem,
+} from '@/lib/api';
 import { Calendar as CalendarPicker } from '@/components/ui/calendar';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -170,6 +180,126 @@ const ManagerMeetings = () => {
   const [scheduleError, setScheduleError] = useState("");
   const [recordings, setRecordings] = useState<MeetingRecordingApi[]>([]);
   const [recordingsLoading, setRecordingsLoading] = useState(false);
+  const [botMeetings, setBotMeetings] = useState<MeetingBotListItem[]>([]);
+  const [botMeetingsLoading, setBotMeetingsLoading] = useState(false);
+  const [liveBotOpen, setLiveBotOpen] = useState(false);
+  const [liveBotTitle, setLiveBotTitle] = useState('');
+  const [liveBotUrl, setLiveBotUrl] = useState('');
+  const [liveBotError, setLiveBotError] = useState('');
+  const [liveBotStarting, setLiveBotStarting] = useState(false);
+  const [createMeetingOpen, setCreateMeetingOpen] = useState(false);
+  const [createTitle, setCreateTitle] = useState('');
+  const [createUrl, setCreateUrl] = useState('');
+  const [createError, setCreateError] = useState('');
+  const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [startingId, setStartingId] = useState<string | null>(null);
+  const [stoppingId, setStoppingId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'scheduled' | 'live' | 'ended'>('all');
+
+  const fetchBotMeetings = useCallback(async () => {
+    if (!token || !workspaceId) return;
+    setBotMeetingsLoading(true);
+    try {
+      const { meetings: list } = await listMeetings(token, workspaceId);
+      setBotMeetings(list);
+    } catch {
+      setBotMeetings([]);
+    } finally {
+      setBotMeetingsLoading(false);
+    }
+  }, [token, workspaceId]);
+
+  useEffect(() => {
+    fetchBotMeetings();
+  }, [fetchBotMeetings]);
+
+  const handleCreateMeeting = async () => {
+    if (!token || !createUrl.trim()) {
+      setCreateError('Meeting URL is required.');
+      return;
+    }
+    const url = createUrl.trim();
+    if (!/^https?:\/\//i.test(url)) {
+      setCreateError('URL must start with http:// or https://');
+      return;
+    }
+    setCreateError('');
+    setCreateSubmitting(true);
+    try {
+      const { id } = await createMeeting(token, {
+        project_id: workspaceId,
+        title: createTitle.trim() || 'Meeting',
+        meeting_url: url,
+      });
+      setCreateMeetingOpen(false);
+      setCreateTitle('');
+      setCreateUrl('');
+      navigate(`${basePath}/meeting/${id}`);
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : 'Failed to create meeting');
+    } finally {
+      setCreateSubmitting(false);
+    }
+  };
+
+  const handleStartBot = async (m: MeetingBotListItem) => {
+    if (!token || !m.meeting_url) return;
+    setStartingId(m.id);
+    try {
+      await startMeeting(token, m.id, {
+        meeting_url: m.meeting_url,
+        project_id: workspaceId,
+        title: m.title || 'Meeting',
+      });
+      await fetchBotMeetings();
+      navigate(`${basePath}/meeting/${m.id}`);
+    } catch {
+      await fetchBotMeetings();
+    } finally {
+      setStartingId(null);
+    }
+  };
+
+  const handleStopBot = async (m: MeetingBotListItem) => {
+    if (!token) return;
+    setStoppingId(m.id);
+    try {
+      await stopMeeting(token, m.id);
+      await fetchBotMeetings();
+    } finally {
+      setStoppingId(null);
+    }
+  };
+
+  const handleStartLiveMeeting = async () => {
+    if (!token || !liveBotUrl.trim()) {
+      setLiveBotError('Meeting URL is required (e.g. Jitsi Meet link).');
+      return;
+    }
+    const url = liveBotUrl.trim();
+    if (!/^https?:\/\//i.test(url)) {
+      setLiveBotError('URL must start with http:// or https://');
+      return;
+    }
+    setLiveBotError('');
+    setLiveBotStarting(true);
+    try {
+      const { id } = await createMeeting(token, {
+        project_id: workspaceId,
+        title: liveBotTitle.trim() || 'Live Meeting',
+        meeting_url: url,
+      });
+      await startMeeting(token, id, { meeting_url: url, project_id: workspaceId, title: liveBotTitle.trim() || 'Live Meeting' });
+      setLiveBotOpen(false);
+      setLiveBotTitle('');
+      setLiveBotUrl('');
+      navigate(`${basePath}/meeting/${id}`);
+    } catch (e) {
+      setLiveBotError(e instanceof Error ? e.message : 'Failed to start meeting');
+    } finally {
+      setLiveBotStarting(false);
+    }
+  };
 
   const fetchRecordings = useCallback(async () => {
     if (!token) return;
@@ -402,6 +532,173 @@ const ManagerMeetings = () => {
             </Dialog>
           </div>
         </div>
+
+        {/* Live meeting bot: list + create + start */}
+        <Card className="shadow-card border-primary/20">
+          <CardHeader>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Video className="h-5 w-5 text-primary" />
+                  Meetings with transcription bot
+                </CardTitle>
+                <CardDescription className="mt-1">
+                  Create a meeting, start the bot to join and transcribe in real time. Open a meeting to see live transcript, attendance, summary and action items after you stop.
+                </CardDescription>
+              </div>
+              <Dialog open={createMeetingOpen} onOpenChange={(o) => { setCreateMeetingOpen(o); setCreateError(''); }}>
+                <DialogTrigger asChild>
+                  <Button variant="outline">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create meeting
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create meeting</DialogTitle>
+                    <DialogDescription>
+                      Add a meeting (e.g. Jitsi link). You can start the bot from the meeting detail page.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-3">
+                    <Label htmlFor="create-title">Title (optional)</Label>
+                    <Input
+                      id="create-title"
+                      placeholder="Weekly standup"
+                      value={createTitle}
+                      onChange={(e) => setCreateTitle(e.target.value)}
+                    />
+                    <Label htmlFor="create-url">Meeting URL *</Label>
+                    <Input
+                      id="create-url"
+                      placeholder="https://meet.jit.si/YourRoom"
+                      value={createUrl}
+                      onChange={(e) => { setCreateUrl(e.target.value); setCreateError(''); }}
+                    />
+                    {createError && <p className="text-sm text-destructive">{createError}</p>}
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setCreateMeetingOpen(false)}>Cancel</Button>
+                    <Button onClick={handleCreateMeeting} disabled={createSubmitting}>
+                      {createSubmitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                      Create
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+              <Dialog open={liveBotOpen} onOpenChange={(open) => { setLiveBotOpen(open); setLiveBotError(''); }}>
+                <DialogTrigger asChild>
+                  <Button>
+                    <Play className="h-4 w-4 mr-2" />
+                    Start live meeting
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Start live meeting with transcription bot</DialogTitle>
+                    <DialogDescription>
+                      Enter a Jitsi Meet (or other) meeting URL. The bot will join and stream audio for real-time transcription.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-3">
+                    <Label htmlFor="live-bot-title">Title (optional)</Label>
+                    <Input
+                      id="live-bot-title"
+                      placeholder="Daily standup"
+                      value={liveBotTitle}
+                      onChange={(e) => setLiveBotTitle(e.target.value)}
+                    />
+                    <Label htmlFor="live-bot-url">Meeting URL *</Label>
+                    <Input
+                      id="live-bot-url"
+                      placeholder="https://meet.jit.si/YourRoomName"
+                      value={liveBotUrl}
+                      onChange={(e) => { setLiveBotUrl(e.target.value); setLiveBotError(''); }}
+                    />
+                    {liveBotError && <p className="text-sm text-destructive">{liveBotError}</p>}
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setLiveBotOpen(false)}>Cancel</Button>
+                    <Button onClick={handleStartLiveMeeting} disabled={liveBotStarting}>
+                      {liveBotStarting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                      Create & start
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {botMeetings.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm text-muted-foreground">Filter:</span>
+                {(['all', 'scheduled', 'live', 'ended'] as const).map((f) => (
+                  <Button
+                    key={f}
+                    variant={statusFilter === f ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setStatusFilter(f)}
+                  >
+                    {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+                  </Button>
+                ))}
+              </div>
+            )}
+            {botMeetingsLoading ? (
+              <div className="flex items-center gap-2 text-muted-foreground py-4">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading…
+              </div>
+            ) : botMeetings.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-2">No meetings yet. Create one or start a live meeting above.</p>
+            ) : (
+              <div className="space-y-2">
+                {botMeetings
+                  .filter((m) => statusFilter === 'all' || m.status === statusFilter)
+                  .map((m) => (
+                  <div key={m.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium truncate">{m.title || 'Meeting'}</p>
+                      <p className="text-xs text-muted-foreground capitalize">{m.status}</p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {m.status === 'scheduled' && m.meeting_url && (
+                        <Button
+                          size="sm"
+                          onClick={() => handleStartBot(m)}
+                          disabled={!!startingId}
+                        >
+                          {startingId === m.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3 mr-1" />}
+                          Start bot
+                        </Button>
+                      )}
+                      {m.status === 'live' && (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleStopBot(m)}
+                          disabled={!!stoppingId}
+                        >
+                          {stoppingId === m.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3 mr-1" />}
+                          Stop
+                        </Button>
+                      )}
+                      {m.meeting_url && (
+                        <Button size="sm" variant="ghost" onClick={() => window.open(m.meeting_url!, '_blank')}>
+                          <ExternalLink className="h-3 w-3 mr-1" />
+                          Join
+                        </Button>
+                      )}
+                      <Button size="sm" variant="outline" onClick={() => navigate(`${basePath}/meeting/${m.id}`)}>
+                        Open
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <div className="grid lg:grid-cols-2 gap-6">
           {/* Upload Section */}
