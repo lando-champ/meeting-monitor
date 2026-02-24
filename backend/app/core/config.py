@@ -1,6 +1,6 @@
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
-from typing import List, Union
+from typing import List, Union, Optional
 
 class Settings(BaseSettings):
     # MongoDB
@@ -37,8 +37,21 @@ class Settings(BaseSettings):
     AUDIO_SAMPLE_RATE: int = 16000
     AUDIO_CHANNELS: int = 1
     AUDIO_CHUNK_SIZE: int = 1024
+    # Input device for bot: system audio (e.g. "Stereo Mix" on Windows) not microphone.
+    # Set to device name substring (e.g. "Stereo Mix", "What U Hear") or device index (e.g. "2").
+    # Leave unset to use default input device (usually mic).
+    AUDIO_INPUT_DEVICE: Optional[Union[int, str]] = None
     # STT buffer seconds before calling Whisper (smaller = faster first transcript, more API calls)
     STT_BUFFER_SECONDS: float = 3.0
+
+    @field_validator("AUDIO_INPUT_DEVICE", mode="before")
+    @classmethod
+    def parse_audio_input_device(cls, v) -> Optional[Union[int, str]]:
+        if v is None or (isinstance(v, str) and v.strip() == ""):
+            return None
+        if isinstance(v, str) and v.strip().isdigit():
+            return int(v.strip())
+        return v if isinstance(v, (int, str)) else None
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod

@@ -99,11 +99,14 @@ class JitsiMeetBot(BaseBot):
         return True
 
     async def start_audio_stream(self, callback_url: str) -> None:
-        """Run capture in thread; in async loop send chunks over WebSocket."""
+        """Run capture in thread; in async loop send chunks over WebSocket.
+        Uses AUDIO_INPUT_DEVICE when set (e.g. 'Stereo Mix') so bot captures system audio
+        for Groq transcription instead of the microphone."""
         import logging
         import websockets
         log = logging.getLogger(__name__)
-        self._capture = SystemAudioCapture()
+        device = getattr(settings, "AUDIO_INPUT_DEVICE", None)
+        self._capture = SystemAudioCapture(device=device)
         try:
             self._capture.start()
         except Exception as e:

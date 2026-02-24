@@ -1,11 +1,13 @@
 """
 Captures system audio (e.g. Stereo Mix on Windows) or default input (mic) as PCM16, 16 kHz mono.
 Uses sounddevice (optional). Puts chunks in asyncio queue; get_audio_chunk() is awaited by the bot.
+When AUDIO_INPUT_DEVICE is set, uses that device (by name or index) so the bot captures system
+audio for transcription with Groq instead of the microphone.
 """
 import asyncio
 import logging
 import struct
-from typing import Optional
+from typing import Optional, Union
 
 from app.core.config import settings
 
@@ -19,6 +21,35 @@ except ImportError:
     sd = None
 
 
+def _resolve_input_device(device: Optional[Union[int, str]]) -> Optional[int]:
+    """Resolve AUDIO_INPUT_DEVICE to a sounddevice input device index. None = use default."""
+    if not SOUNDDEVICE_AVAILABLE or device is None:
+        return None
+    if isinstance(device, int):
+        return device
+    # device is a name substring (e.g. "Stereo Mix", "What U Hear")
+    name = (device or "").strip()
+    if not name:
+        return None
+    try:
+        all_devices = sd.query_devices()
+        if isinstance(all_devices, dict):
+            all_devices = [all_devices]
+        for dev in all_devices:
+            if not isinstance(dev, dict):
+                continue
+            dev_name = dev.get("name") or ""
+            max_input = dev.get("max_input_channels", 0) or 0
+            idx = dev.get("index", -1)
+            if max_input > 0 and name.lower() in dev_name.lower():
+                logger.info("Audio capture using system/loopback device: %s (index %s)", dev_name, idx)
+                return idx
+        logger.warning("No input device name containing %r found; falling back to default", name)
+    except Exception as e:
+        logger.warning("Could not resolve audio device %r: %s; using default", device, e)
+    return None
+
+
 class SystemAudioCapture:
     """Capture system/default audio; output PCM16 16 kHz mono via async queue."""
 
@@ -27,7 +58,7 @@ class SystemAudioCapture:
         sample_rate: int = None,
         channels: int = None,
         chunk_size: int = None,
-        device: Optional[int] = None,
+        device: Optional[Union[int, str]] = None,
     ):
         self.sample_rate = sample_rate or settings.AUDIO_SAMPLE_RATE
         self.channels = channels or settings.AUDIO_CHANNELS
@@ -54,7 +85,9 @@ class SystemAudioCapture:
         if not SOUNDDEVICE_AVAILABLE:
             raise RuntimeError("sounddevice is not installed. pip install sounddevice")
         self._running = True
-        device = self.device
+        # Use instance device, then AUDIO_INPUT_DEVICE (system/loopback), then default input
+        device_cfg = self.device if self.device is not None else getattr(settings, "AUDIO_INPUT_DEVICE", None)
+        device = _resolve_input_device(device_cfg)
         if device is None and SOUNDDEVICE_AVAILABLE:
             try:
                 default = sd.default.device
