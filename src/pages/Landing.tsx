@@ -1,10 +1,9 @@
 import { Link } from 'react-router-dom';
-import { 
-  Building2, 
-  GraduationCap, 
-  Mic, 
-  ListTodo, 
-  LayoutDashboard, 
+import {
+  Building2,
+  Mic,
+  ListTodo,
+  LayoutDashboard,
   TrendingUp,
   CheckCircle2,
   Lock,
@@ -14,7 +13,7 @@ import {
   Users,
   Clock,
   Zap,
-  User
+  User,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -106,10 +105,10 @@ const Landing = () => {
             task extraction, and productivity tracking—all powered by AI.
           </p>
 
-          {/* Domain Selection Cards */}
-          <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
-            <Link to="/business" className="group">
-              <Card className="h-full shadow-card hover:shadow-hover transition-all duration-300 border-2 border-transparent hover:border-primary/20">
+          {/* CTA */}
+          <div className="max-w-md mx-auto">
+            <Link to="/business" className="group block">
+              <Card className="shadow-card hover:shadow-hover transition-all duration-300 border-2 border-transparent hover:border-primary/20">
                 <CardHeader className="text-center pb-4">
                   <div className="mx-auto mb-4 h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
                     <Building2 className="h-8 w-8 text-primary" />
@@ -135,40 +134,6 @@ const Landing = () => {
                     </li>
                   </ul>
                   <Button className="w-full group-hover:bg-primary/90">
-                    Get Started
-                    <ArrowRight className="h-4 w-4 ml-2" />
-                  </Button>
-                </CardContent>
-              </Card>
-            </Link>
-
-            <Link to="/education" className="group">
-              <Card className="h-full shadow-card hover:shadow-hover transition-all duration-300 border-2 border-transparent hover:border-secondary/20">
-                <CardHeader className="text-center pb-4">
-                  <div className="mx-auto mb-4 h-16 w-16 rounded-2xl bg-secondary/10 flex items-center justify-center group-hover:bg-secondary/20 transition-colors">
-                    <GraduationCap className="h-8 w-8 text-secondary" />
-                  </div>
-                  <CardTitle className="text-2xl">For Education</CardTitle>
-                  <CardDescription className="text-base">
-                    Teachers & Students
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <ul className="space-y-3 text-sm text-muted-foreground mb-6">
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-success" />
-                      Lecture transcription & summaries
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-success" />
-                      Auto-generated to-do lists
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-success" />
-                      Assignment tracking
-                    </li>
-                  </ul>
-                  <Button variant="secondary" className="w-full">
                     Get Started
                     <ArrowRight className="h-4 w-4 ml-2" />
                   </Button>
@@ -313,23 +278,6 @@ const Landing = () => {
                   <div>
                     <p className="font-semibold text-sm">Sarah Chen</p>
                     <p className="text-xs text-muted-foreground">Product Manager, TechCorp</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-card border-0">
-              <CardContent className="pt-6">
-                <p className="text-muted-foreground mb-6">
-                  "My students never miss an assignment now. The AI extracts everything they need from my lectures."
-                </p>
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-secondary/10 flex items-center justify-center">
-                    <GraduationCap className="h-5 w-5 text-secondary" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm">Prof. James Wilson</p>
-                    <p className="text-xs text-muted-foreground">Computer Science, MIT</p>
                   </div>
                 </div>
               </CardContent>

@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { Navigate, Outlet, Route, useNavigate, useParams } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
+import { joinProject } from "@/lib/api";
 import CorporateRoleSelect from "@/pages/corporate/RoleSelect";
 import ManagerDashboard from "@/pages/corporate/ManagerDashboard";
 import ManagerMeetings from "@/pages/corporate/ManagerMeetings";
@@ -40,7 +42,8 @@ const WorkspaceGate = ({ role }: { role: WorkspaceRole }) => {
 const JoinWorkspaceRoute = () => {
   const { code } = useParams();
   const navigate = useNavigate();
-  const { joinWorkspace, getWorkspaceByInviteCode, setRole } = useWorkspace();
+  const { token } = useAuth();
+  const { joinWorkspace, getWorkspaceByInviteCode, setRole, refreshWorkspaces } = useWorkspace();
 
   useEffect(() => {
     setRole("member");
@@ -49,13 +52,24 @@ const JoinWorkspaceRoute = () => {
       return;
     }
     const workspace = getWorkspaceByInviteCode(code);
-    if (!workspace) {
+    if (workspace) {
+      joinWorkspace(code);
+      navigate(`/business/member/workspaces/${workspace.id}/dashboard`, { replace: true });
+      return;
+    }
+    if (!token) {
       navigate("/business/member/workspaces", { replace: true });
       return;
     }
-    joinWorkspace(code);
-    navigate(`/business/member/workspaces/${workspace.id}/dashboard`, { replace: true });
-  }, [code, joinWorkspace, getWorkspaceByInviteCode, navigate, setRole]);
+    joinProject(token, code)
+      .then(async (project) => {
+        await refreshWorkspaces();
+        navigate(`/business/member/workspaces/${project.id}/dashboard`, { replace: true });
+      })
+      .catch(() => {
+        navigate("/business/member/workspaces", { replace: true });
+      });
+  }, [code, token, joinWorkspace, getWorkspaceByInviteCode, refreshWorkspaces, navigate, setRole]);
 
   return null;
 };

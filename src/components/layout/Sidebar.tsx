@@ -4,7 +4,6 @@ import { Badge } from '@/components/ui/badge';
 import { Lock, Sparkles } from 'lucide-react';
 import { LucideIcon } from 'lucide-react';
 import WorkspaceSwitcher from '@/features/workspaces/WorkspaceSwitcher';
-import ClassSwitcher from '@/features/classes/ClassSwitcher';
 
 export interface SidebarItem {
   title: string;
@@ -26,9 +25,6 @@ const Sidebar = ({ items, title, subtitle }: SidebarProps) => {
   const showWorkspaceSwitcher =
     location.pathname.includes("/business/manager/") ||
     location.pathname.includes("/business/member/");
-  const showClassSwitcher =
-    location.pathname.includes("/education/teacher/") ||
-    location.pathname.includes("/education/student/");
 
   return (
     <aside className="w-64 border-r bg-sidebar min-h-screen flex flex-col">
@@ -43,10 +39,9 @@ const Sidebar = ({ items, title, subtitle }: SidebarProps) => {
         {subtitle && (
           <p className="text-xs text-muted-foreground mt-2">{subtitle}</p>
         )}
-        {(showWorkspaceSwitcher || showClassSwitcher) && (
+        {showWorkspaceSwitcher && (
           <div className="mt-4 space-y-2">
-            {showWorkspaceSwitcher && <WorkspaceSwitcher />}
-            {showClassSwitcher && <ClassSwitcher />}
+            <WorkspaceSwitcher />
           </div>
         )}
       </div>

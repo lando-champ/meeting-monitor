@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Sparkles, Mail, Lock, User, ArrowRight, Building2, GraduationCap } from 'lucide-react';
+import { Sparkles, Mail, Lock, User, ArrowRight, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,19 +11,14 @@ import { useAuth } from '@/context/AuthContext';
 
 const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedDomain, setSelectedDomain] = useState<'business' | 'education' | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { login, register, isAuthenticated } = useAuth();
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    if (selectedDomain === 'education') {
-      navigate('/education/teacher/classes', { replace: true });
-    } else {
-      navigate('/business/manager/workspaces', { replace: true });
-    }
-  }, [isAuthenticated, selectedDomain, navigate]);
+    navigate('/business/manager/workspaces', { replace: true });
+  }, [isAuthenticated, navigate]);
 
   if (isAuthenticated) return null;
 
@@ -56,11 +51,7 @@ const Auth = () => {
     const email = (form.querySelector('#signup-email') as HTMLInputElement)?.value?.trim();
     const password = (form.querySelector('#signup-password') as HTMLInputElement)?.value;
     if (!name || !email || !password) return;
-    if (!selectedDomain) {
-      toast({ variant: "destructive", title: "Select a role", description: "Choose Business or Education." });
-      return;
-    }
-    const role = selectedDomain === 'education' ? 'teacher' : 'manager';
+    const role = 'manager';
     setIsLoading(true);
     try {
       await register({ name, email, password, role });
@@ -121,19 +112,6 @@ const Auth = () => {
                       <Input id="signin-password" type="password" placeholder="••••••••" className="pl-10" required />
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Sign in as</Label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <Button type="button" variant={selectedDomain === 'business' ? 'default' : 'outline'} className="h-auto py-3 flex flex-col gap-1" onClick={() => setSelectedDomain('business')}>
-                        <Building2 className="h-5 w-5" />
-                        <span className="text-xs">Business</span>
-                      </Button>
-                      <Button type="button" variant={selectedDomain === 'education' ? 'secondary' : 'outline'} className="h-auto py-3 flex flex-col gap-1" onClick={() => setSelectedDomain('education')}>
-                        <GraduationCap className="h-5 w-5" />
-                        <span className="text-xs">Education</span>
-                      </Button>
-                    </div>
-                  </div>
                   <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading ? 'Signing in...' : 'Sign In'}
                     <ArrowRight className="ml-2 h-4 w-4" />
@@ -162,19 +140,6 @@ const Auth = () => {
                     <div className="relative">
                       <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Input id="signup-password" type="password" placeholder="••••••••" className="pl-10" required minLength={6} />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>I want to use MeetingAI for</Label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <Button type="button" variant={selectedDomain === 'business' ? 'default' : 'outline'} className="h-auto py-3 flex flex-col gap-1" onClick={() => setSelectedDomain('business')}>
-                        <Building2 className="h-5 w-5" />
-                        <span className="text-xs">Business</span>
-                      </Button>
-                      <Button type="button" variant={selectedDomain === 'education' ? 'secondary' : 'outline'} className="h-auto py-3 flex flex-col gap-1" onClick={() => setSelectedDomain('education')}>
-                        <GraduationCap className="h-5 w-5" />
-                        <span className="text-xs">Education</span>
-                      </Button>
                     </div>
                   </div>
                   <Button type="submit" className="w-full" disabled={isLoading}>

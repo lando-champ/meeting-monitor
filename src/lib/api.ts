@@ -315,6 +315,17 @@ export async function updateProjectTask(
   return res.json();
 }
 
+export async function deleteTask(token: string, taskId: string): Promise<void> {
+  const res = await fetch(`${apiBaseUrl}/api/v1/tasks/${taskId}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(token),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(typeof err.detail === "string" ? err.detail : "Failed to delete task");
+  }
+}
+
 export async function extractProjectTasks(
   token: string,
   projectId: string

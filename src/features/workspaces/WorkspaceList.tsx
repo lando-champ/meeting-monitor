@@ -15,6 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useWorkspace, WorkspaceRole } from "@/context/WorkspaceContext";
+import { useAuth } from "@/context/AuthContext";
 import CreateWorkspaceModal from "./CreateWorkspaceModal";
 import JoinWorkspaceModal from "./JoinWorkspaceModal";
 
@@ -23,7 +24,8 @@ interface WorkspaceListProps {
 }
 
 const WorkspaceList = ({ role }: WorkspaceListProps) => {
-  const { workspaces, currentWorkspaceId, setRole, hasAccessToWorkspace, deleteWorkspace, deleteAllWorkspaces, currentUserEmail } = useWorkspace();
+  const { user } = useAuth();
+  const { workspaces, currentWorkspaceId, setRole, hasAccessToWorkspace, deleteWorkspace, deleteAllWorkspaces } = useWorkspace();
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
 
@@ -37,8 +39,12 @@ const WorkspaceList = ({ role }: WorkspaceListProps) => {
   );
 
   const canCreate = role === "manager";
-  const visibleWorkspaces =
-    role === "manager" ? workspaces : workspaces.filter((workspace) => hasAccessToWorkspace(workspace.id));
+  const visibleWorkspaces = useMemo(() => {
+    if (role === "manager") {
+      return workspaces.filter((w) => w.ownerId === user?.id);
+    }
+    return workspaces.filter((workspace) => hasAccessToWorkspace(workspace.id));
+  }, [role, workspaces, user?.id, hasAccessToWorkspace]);
   const myProjectCount = visibleWorkspaces.length;
 
   return (

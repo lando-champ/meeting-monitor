@@ -21,13 +21,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { mockKanbanColumns, mockTeamMembers } from '@/data/mockData';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useParams } from 'react-router-dom';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Task, TaskPriority, TaskStatus } from '@/lib/types';
-import { loadWorkspaceTasks, saveWorkspaceTasks } from '@/lib/workspaceStorage';
 import { DndContext, DragEndEvent, useDraggable, useDroppable } from '@dnd-kit/core';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -90,6 +88,7 @@ const ManagerKanban = () => {
   const { token } = useAuth();
   const basePath = `/business/manager/workspaces/${workspaceId}`;
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [memberDetails, setMemberDetails] = useState<{ id: string; name: string; email: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -101,8 +100,8 @@ const ManagerKanban = () => {
   const [subtasksStr, setSubtasksStr] = useState("");
   const managerSidebarItems: SidebarItem[] = [
     { title: 'Dashboard', href: `${basePath}/dashboard`, icon: LayoutDashboard },
-    { title: 'Meetings', href: `${basePath}/meetings`, icon: Calendar, badge: 3 },
-    { title: 'Tasks', href: `${basePath}/tasks`, icon: ListTodo, badge: 5 },
+    { title: 'Meetings', href: `${basePath}/meetings`, icon: Calendar },
+    { title: 'Tasks', href: `${basePath}/tasks`, icon: ListTodo, badge: tasks.filter((t) => t.status === 'todo' || t.status === 'in_progress').length },
     { title: 'Kanban Board', href: `${basePath}/kanban`, icon: LayoutGrid },
     { title: 'Team', href: `${basePath}/team`, icon: Users },
     { title: 'Analytics', href: `${basePath}/analytics`, icon: BarChart3, isPremium: true },
@@ -115,30 +114,18 @@ const ManagerKanban = () => {
     try {
       const project = await getProject(token, workspaceId);
       setTasks((project.tasks ?? []).map(apiTaskToTask));
+      setMemberDetails(project.member_details ?? []);
     } catch {
       setTasks([]);
+      setMemberDetails([]);
     } finally {
       setLoading(false);
     }
   }, [token, workspaceId]);
 
   useEffect(() => {
-    if (token && workspaceId) {
-      fetchProjectTasks();
-    } else {
-      const fallback = mockKanbanColumns.flatMap((col) => col.tasks).map((t) => ({
-        ...t,
-        status: (t.status === 'in-progress' ? 'in_progress' : t.status === 'review' ? 'in_review' : t.status === 'blocked' ? 'blockers' : t.status) as TaskStatus,
-      }));
-      setTasks(loadWorkspaceTasks(workspaceId, fallback));
-    }
+    if (token && workspaceId) fetchProjectTasks();
   }, [workspaceId, token, fetchProjectTasks]);
-
-  useEffect(() => {
-    if (!token && tasks.length) {
-      saveWorkspaceTasks(workspaceId, tasks);
-    }
-  }, [tasks, workspaceId, token]);
 
   const columns = useMemo(
     () =>
@@ -206,7 +193,7 @@ const ManagerKanban = () => {
         // keep modal open on error
       }
     } else {
-      const assignee = assigneeId ? mockTeamMembers.find((m) => m.id === assigneeId) : undefined;
+      const assignee = assigneeId ? memberDetails.find((m) => m.id === assigneeId) : undefined;
       const newTask: Task = {
         id: `task-${Date.now()}`,
         title: title.trim(),
@@ -301,25 +288,19 @@ const ManagerKanban = () => {
             )}
           </div>
           <div className="flex items-center justify-between">
-            {(task.assignee || task.assignee_id) && (
-              <div className="flex items-center gap-2">
-                {task.assignee ? (
-                  <>
-                    <Avatar className="h-5 w-5">
-                      <AvatarImage src={task.assignee.avatar} />
-                      <AvatarFallback className="text-[8px]">
-                        {task.assignee.name.split(' ').map((n) => n[0]).join('')}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-[10px] text-muted-foreground">
-                      {task.assignee.name.split(' ')[0]}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-[10px] text-muted-foreground">{task.assignee_id}</span>
-                )}
-              </div>
-            )}
+            {task.assignee_id && (() => {
+              const assignee = memberDetails.find((m) => m.id === task.assignee_id);
+              return assignee ? (
+                <div className="flex items-center gap-2">
+                  <Avatar className="h-5 w-5">
+                    <AvatarFallback className="text-[8px]">{assignee.name.split(' ').map((n) => n[0]).join('')}</AvatarFallback>
+                  </Avatar>
+                  <span className="text-[10px] text-muted-foreground">{assignee.name.split(' ')[0]}</span>
+                </div>
+              ) : (
+                <span className="text-[10px] text-muted-foreground">{task.assignee_id}</span>
+              );
+            })()}
             {task.isAutoGenerated && (
               <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                 <ArrowUpRight className="h-2.5 w-2.5" />
@@ -554,7 +535,7 @@ const ManagerKanban = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {mockTeamMembers.map((member) => (
+                  {memberDetails.map((member) => (
                     <SelectItem key={member.id} value={member.id}>
                       {member.name}
                     </SelectItem>

@@ -18,7 +18,6 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import UploadMeeting from '@/components/meetings/UploadMeeting';
-import { mockMeetings } from '@/data/mockData';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -138,18 +137,20 @@ const TeamMemberMeetings = () => {
               <CardDescription>Meetings you're invited to</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {mockMeetings.filter(m => m.status === 'scheduled').slice(0, 3).map((meeting) => (
+              {botMeetings.filter((m) => m.status === 'scheduled').slice(0, 3).map((meeting) => (
                 <div key={meeting.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
                       <Video className="h-5 w-5 text-primary" />
                     </div>
                     <div>
-                      <p className="font-medium">{meeting.title}</p>
-                      <p className="text-sm text-muted-foreground flex items-center gap-2">
-                        <Clock className="h-3 w-3" />
-                        {format(meeting.startTime, 'MMM d, h:mm a')}
-                      </p>
+                      <p className="font-medium">{meeting.title ?? 'Meeting'}</p>
+                      {meeting.started_at && (
+                        <p className="text-sm text-muted-foreground flex items-center gap-2">
+                          <Clock className="h-3 w-3" />
+                          {format(new Date(meeting.started_at), 'MMM d, h:mm a')}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <Button
@@ -158,10 +159,13 @@ const TeamMemberMeetings = () => {
                     onClick={() => navigate(`${basePath}/meeting/${meeting.id}`)}
                   >
                     <Play className="h-3 w-3 mr-1" />
-                    Join
+                    Open
                   </Button>
                 </div>
               ))}
+              {botMeetings.filter((m) => m.status === 'scheduled').length === 0 && !botMeetingsLoading && (
+                <p className="text-sm text-muted-foreground">No upcoming meetings.</p>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -174,46 +178,27 @@ const TeamMemberMeetings = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {mockMeetings.filter(m => m.status === 'completed').map((meeting) => (
-                <div key={meeting.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 cursor-pointer">
+              {botMeetings.filter((m) => m.status === 'ended').map((meeting) => (
+                <div key={meeting.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 cursor-pointer" onClick={() => navigate(`${basePath}/meeting/${meeting.id}`)}>
                   <div className="flex items-center gap-4">
-                    <div className={cn(
-                      "h-10 w-10 rounded-lg flex items-center justify-center",
-                      "bg-success/10"
-                    )}>
+                    <div className={cn('h-10 w-10 rounded-lg flex items-center justify-center', 'bg-success/10')}>
                       <CheckCircle2 className="h-5 w-5 text-success" />
                     </div>
                     <div>
-                      <p className="font-medium">{meeting.title}</p>
+                      <p className="font-medium">{meeting.title ?? 'Meeting'}</p>
                       <p className="text-sm text-muted-foreground">
-                        {format(meeting.startTime, 'MMMM d, yyyy • h:mm a')}
+                        {meeting.ended_at ? format(new Date(meeting.ended_at), 'MMMM d, yyyy • h:mm a') : meeting.started_at ? format(new Date(meeting.started_at), 'MMMM d, yyyy') : '—'}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <div className="flex -space-x-2">
-                      {meeting.participants.slice(0, 3).map((p) => (
-                        <Avatar key={p.id} className="h-8 w-8 border-2 border-background">
-                          <AvatarImage src={p.avatar} />
-                          <AvatarFallback className="text-xs">
-                            {p.name.split(' ').map(n => n[0]).join('')}
-                          </AvatarFallback>
-                        </Avatar>
-                      ))}
-                    </div>
-                    <Badge variant="secondary">
-                      {meeting.actionItems?.length || 0} tasks
-                    </Badge>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => navigate(`${basePath}/meeting/${meeting.id}`)}
-                    >
-                      View Summary
-                    </Button>
-                  </div>
+                  <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); navigate(`${basePath}/meeting/${meeting.id}`); }}>
+                    View Summary
+                  </Button>
                 </div>
               ))}
+              {botMeetings.filter((m) => m.status === 'ended').length === 0 && !botMeetingsLoading && (
+                <p className="text-sm text-muted-foreground">No past meetings yet.</p>
+              )}
             </div>
           </CardContent>
         </Card>

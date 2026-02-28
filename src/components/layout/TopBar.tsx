@@ -1,8 +1,8 @@
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Bell, Search, Radio, ChevronDown, User, LogOut } from 'lucide-react';
+import { Bell, Search, ChevronDown, User, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,19 +16,32 @@ import { useAuth } from '@/context/AuthContext';
 
 interface TopBarProps {
   showMeetingStatus?: boolean;
+  liveMeetingTitle?: string | null;
 }
 
 const roleLabel = (role: string) =>
   role === "manager" ? "Manager" : role === "member" ? "Team Member" : role === "teacher" ? "Teacher" : "Student";
 
-const TopBar = ({ showMeetingStatus = true }: TopBarProps) => {
+function useClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return now;
+}
+
+const TopBar = ({ showMeetingStatus = true, liveMeetingTitle = null }: TopBarProps) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const clock = useClock();
   const displayName = user?.name ?? "";
   const displayRole = user ? roleLabel(user.role) : "";
   const displayAvatar = user?.avatar ?? undefined;
   const notifications: { id: string; title: string; message: string; isRead: boolean }[] = [];
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  const timeStr = clock.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const dateStr = clock.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 
   return (
     <header className="h-16 border-b bg-card flex items-center justify-between px-6">
@@ -36,23 +49,26 @@ const TopBar = ({ showMeetingStatus = true }: TopBarProps) => {
       <div className="flex items-center gap-4 flex-1">
         <div className="relative max-w-md w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input 
-            placeholder="Search meetings, tasks, notes..." 
+          <Input
+            placeholder="Search meetings, tasks, projects..."
             className="pl-10 bg-muted/50 border-0"
           />
         </div>
       </div>
 
-      {/* Center - Meeting Status */}
+      {/* Center - Real clock; live meeting only when one exists */}
       {showMeetingStatus && (
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-success/10 text-success">
-            <Radio className="h-3 w-3 animate-pulse" />
-            <span className="text-sm font-medium">Live Meeting</span>
+          <div className="text-right">
+            <p className="text-sm font-medium tabular-nums">{timeStr}</p>
+            <p className="text-xs text-muted-foreground">{dateStr}</p>
           </div>
-          <Badge variant="outline" className="text-muted-foreground">
-            Weekly Standup • 15:32
-          </Badge>
+          {liveMeetingTitle && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-success/10 text-success">
+              <span className="h-2 w-2 rounded-full bg-current animate-pulse" />
+              <span className="text-sm font-medium truncate max-w-[140px]">{liveMeetingTitle}</span>
+            </div>
+          )}
         </div>
       )}
 

@@ -1,16 +1,16 @@
-import { 
-  LayoutDashboard, 
-  Calendar, 
-  ListTodo, 
-  LayoutGrid, 
+import { useCallback, useEffect, useState } from 'react';
+import {
+  LayoutDashboard,
+  Calendar,
+  ListTodo,
+  LayoutGrid,
   FileText,
   Clock,
   CheckCircle2,
-  AlertCircle,
   Sparkles,
   ArrowRight,
   Radio,
-  Upload
+  Upload,
 } from 'lucide-react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -20,31 +20,58 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
-import { mockMeetings, mockTasks, getTaskStats } from '@/data/mockData';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/context/AuthContext';
+import { getProject, listMeetings, type ApiTask, type MeetingBotListItem } from '@/lib/api';
 
 const TeamMemberDashboard = () => {
-  const { user } = useAuth();
-  const { workspaceId = "alpha" } = useParams();
+  const { user, token } = useAuth();
+  const { workspaceId } = useParams();
   const navigate = useNavigate();
   const basePath = `/business/member/workspaces/${workspaceId}`;
+  const [myTasks, setMyTasks] = useState<ApiTask[]>([]);
+  const [meetings, setMeetings] = useState<MeetingBotListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchData = useCallback(async () => {
+    if (!token || !workspaceId) return;
+    setLoading(true);
+    try {
+      const [project, meetingsRes] = await Promise.all([
+        getProject(token, workspaceId),
+        listMeetings(token, workspaceId),
+      ]);
+      const tasks = (project.tasks ?? []).filter((t) => t.assignee_id === user?.id);
+      setMyTasks(tasks);
+      setMeetings(meetingsRes.meetings ?? []);
+    } catch {
+      setMyTasks([]);
+      setMeetings([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [token, workspaceId, user?.id]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const liveMeeting = meetings.find((m) => m.status === 'live');
+  const upcomingMeetings = meetings.filter((m) => m.status === 'scheduled').slice(0, 3);
+  const endedMeetings = meetings.filter((m) => m.status === 'ended').slice(0, 2);
+
+  const pendingCount = myTasks.filter((t) => t.status !== 'done').length;
+  const completedCount = myTasks.filter((t) => t.status === 'done').length;
+  const totalTasks = myTasks.length;
+  const progressPercent = totalTasks > 0 ? (completedCount / totalTasks) * 100 : 0;
+
   const teamMemberSidebarItems: SidebarItem[] = [
     { title: 'My Dashboard', href: `${basePath}/dashboard`, icon: LayoutDashboard },
-    { title: 'Meetings', href: `${basePath}/meetings`, icon: Calendar, badge: 2 },
-    { title: 'My Tasks', href: `${basePath}/tasks`, icon: ListTodo, badge: 4 },
+    { title: 'Meetings', href: `${basePath}/meetings`, icon: Calendar, badge: upcomingMeetings.length },
+    { title: 'My Tasks', href: `${basePath}/tasks`, icon: ListTodo, badge: pendingCount },
     { title: 'Kanban', href: `${basePath}/kanban`, icon: LayoutGrid },
     { title: 'Documents', href: `${basePath}/documents`, icon: FileText },
   ];
-  const taskStats = getTaskStats();
-  const myTasks = mockTasks.slice(0, 5);
-  const liveMeeting = mockMeetings.find(m => m.status === 'live');
-  const upcomingMeetings = mockMeetings.filter(m => m.status === 'scheduled').slice(0, 3);
-  const completedMeetings = mockMeetings.filter(m => m.status === 'completed' && m.summary).slice(0, 2);
-
-  const completedTasks = myTasks.filter(t => t.status === 'done').length;
-  const totalTasks = myTasks.length;
-  const progressPercent = (completedTasks / totalTasks) * 100;
 
   return (
     <DashboardLayout
@@ -53,11 +80,10 @@ const TeamMemberDashboard = () => {
       sidebarSubtitle="Business Dashboard"
     >
       <div className="space-y-6">
-        {/* Page Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">Good morning, {user?.name?.split(' ')[0] ?? 'there'}</h1>
-            <p className="text-muted-foreground">You have {taskStats.inProgress + taskStats.todo} tasks to work on today.</p>
+            <p className="text-muted-foreground">You have {pendingCount} tasks to work on today.</p>
           </div>
           <Link to={`${basePath}/meetings`}>
             <Button variant="outline">
@@ -67,7 +93,6 @@ const TeamMemberDashboard = () => {
           </Link>
         </div>
 
-        {/* Live Meeting Banner */}
         {liveMeeting && (
           <Card className="border-success/30 bg-success/5">
             <CardContent className="py-4">
@@ -77,16 +102,18 @@ const TeamMemberDashboard = () => {
                     <Radio className="h-5 w-5 text-success animate-pulse" />
                   </div>
                   <div>
-                    <p className="font-medium">{liveMeeting.title}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {liveMeeting.participants.length} participants • Live now
-                    </p>
+                    <p className="font-medium">{liveMeeting.title ?? 'Live Meeting'}</p>
+                    <p className="text-sm text-muted-foreground">Live now</p>
                   </div>
                 </div>
                 <Button
                   variant="outline"
                   className="border-success text-success hover:bg-success/10"
-                  onClick={() => navigate(`${basePath}/meeting/${liveMeeting.id}`)}
+                  onClick={() =>
+                    liveMeeting.meeting_url
+                      ? window.open(liveMeeting.meeting_url)
+                      : navigate(`${basePath}/meeting/${liveMeeting.id}`)
+                  }
                 >
                   Join Meeting
                 </Button>
@@ -95,13 +122,12 @@ const TeamMemberDashboard = () => {
           </Card>
         )}
 
-        {/* Progress Card */}
         <Card className="shadow-card bg-gradient-to-r from-primary/5 to-secondary/5">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-sm text-muted-foreground">My Progress This Week</p>
-                <p className="text-2xl font-bold">{completedTasks} of {totalTasks} tasks completed</p>
+                <p className="text-sm text-muted-foreground">My Progress</p>
+                <p className="text-2xl font-bold">{completedCount} of {totalTasks} tasks completed</p>
               </div>
               <div className="text-right">
                 <p className="text-3xl font-bold text-primary">{Math.round(progressPercent)}%</p>
@@ -112,121 +138,100 @@ const TeamMemberDashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Main Content Grid */}
         <div className="grid lg:grid-cols-3 gap-6">
-          {/* My Tasks */}
           <Card className="shadow-card lg:col-span-2">
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
                 <CardTitle>My Tasks</CardTitle>
-                <CardDescription>Tasks assigned to you from meetings</CardDescription>
+                <CardDescription>Tasks assigned to you</CardDescription>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate(`${basePath}/tasks`)}
-              >
+              <Button variant="ghost" size="sm" onClick={() => navigate(`${basePath}/tasks`)}>
                 View All
               </Button>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {myTasks.map((task) => (
-                  <div 
-                    key={task.id} 
-                    className="flex items-start gap-3 p-3 rounded-lg border hover:shadow-sm transition-shadow"
-                  >
-                    <Checkbox 
-                      checked={task.status === 'done'} 
-                      className="mt-0.5"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className={`font-medium ${task.status === 'done' ? 'line-through text-muted-foreground' : ''}`}>
-                          {task.title}
-                        </p>
-                        {task.isAutoGenerated && (
-                          <Badge variant="outline" className="text-xs bg-secondary/10 border-secondary/30 text-secondary">
-                            <Sparkles className="h-2.5 w-2.5 mr-1" />
-                            AI
-                          </Badge>
-                        )}
+              {loading ? (
+                <p className="text-sm text-muted-foreground">Loading…</p>
+              ) : myTasks.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No tasks assigned to you yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {myTasks.slice(0, 5).map((task) => (
+                    <div
+                      key={task.id}
+                      className="flex items-start gap-3 p-3 rounded-lg border hover:shadow-sm transition-shadow"
+                    >
+                      <Checkbox checked={task.status === 'done'} className="mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className={`font-medium ${task.status === 'done' ? 'line-through text-muted-foreground' : ''}`}>
+                            {task.title}
+                          </p>
+                          {task.is_auto_generated && (
+                            <Badge variant="outline" className="text-xs bg-secondary/10 border-secondary/30 text-secondary">
+                              <Sparkles className="h-2.5 w-2.5 mr-1" />AI
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {task.due_date ? formatDistanceToNow(new Date(task.due_date), { addSuffix: true }) : 'No deadline'}
+                          </span>
+                          <Badge variant="outline" className="text-xs">{task.priority}</Badge>
+                          <Badge variant="secondary" className="text-xs capitalize">{task.status.replace('_', ' ')}</Badge>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {task.dueDate ? formatDistanceToNow(task.dueDate, { addSuffix: true }) : 'No deadline'}
-                        </span>
-                        <Badge 
-                          variant="outline" 
-                          className={`text-xs ${
-                            task.priority === 'urgent' ? 'border-destructive text-destructive' :
-                            task.priority === 'high' ? 'border-warning text-warning' :
-                            'border-muted-foreground'
-                          }`}
-                        >
-                          {task.priority}
-                        </Badge>
-                        <Badge 
-                          variant="secondary" 
-                          className={`text-xs ${
-                            task.status === 'done' ? 'bg-success/10 text-success' :
-                            task.status === 'in_progress' ? 'bg-primary/10 text-primary' :
-                            task.status === 'blockers' ? 'bg-destructive/10 text-destructive' :
-                            ''
-                          }`}
-                        >
-                          {task.status.replace('-', ' ')}
-                        </Badge>
-                      </div>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(`${basePath}/tasks`)}>
+                        <ArrowRight className="h-4 w-4" />
+                      </Button>
                     </div>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <ArrowRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
-          {/* Upcoming Meetings */}
           <Card className="shadow-card">
             <CardHeader>
               <CardTitle>Upcoming Meetings</CardTitle>
-              <CardDescription>Your schedule for today</CardDescription>
+              <CardDescription>Your schedule</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 {upcomingMeetings.map((meeting) => (
                   <div key={meeting.id} className="p-3 rounded-lg border">
-                    <p className="font-medium text-sm mb-1">{meeting.title}</p>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
-                      <Clock className="h-3 w-3" />
-                      {format(meeting.startTime, 'h:mm a')}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {meeting.participants.length} participants
-                    </p>
+                    <p className="font-medium text-sm mb-1">{meeting.title ?? 'Meeting'}</p>
+                    {meeting.started_at && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        {format(new Date(meeting.started_at), 'h:mm a')}
+                      </div>
+                    )}
                   </div>
                 ))}
-                <Button variant="outline" className="w-full" size="sm">
-                  <Calendar className="h-4 w-4 mr-2" />
-                  View Full Schedule
-                </Button>
+                {!loading && upcomingMeetings.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No upcoming meetings.</p>
+                )}
+                <Link to={`${basePath}/meetings`}>
+                  <Button variant="outline" className="w-full" size="sm">
+                    <Calendar className="h-4 w-4 mr-2" />
+                    View Meetings
+                  </Button>
+                </Link>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Recent Meeting Summaries */}
         <Card className="shadow-card">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-secondary" />
-                Recent Meeting Summaries
+                Recent Meetings
               </CardTitle>
-              <CardDescription>AI-generated notes from your meetings</CardDescription>
+              <CardDescription>View summaries and action items</CardDescription>
             </div>
             <Button variant="ghost" size="sm" onClick={() => navigate(`${basePath}/meetings`)}>
               View All
@@ -234,31 +239,17 @@ const TeamMemberDashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="grid md:grid-cols-2 gap-4">
-              {completedMeetings.map((meeting) => (
+              {endedMeetings.map((meeting) => (
                 <div key={meeting.id} className="p-4 rounded-lg border">
                   <div className="flex items-center justify-between mb-3">
-                    <p className="font-medium">{meeting.title}</p>
-                    <Badge variant="outline" className="text-xs">
-                      {format(meeting.startTime, 'MMM d')}
-                    </Badge>
+                    <p className="font-medium">{meeting.title ?? 'Meeting'}</p>
+                    {meeting.ended_at && (
+                      <Badge variant="outline" className="text-xs">
+                        {format(new Date(meeting.ended_at), 'MMM d')}
+                      </Badge>
+                    )}
                   </div>
-                  <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
-                    {meeting.summary?.overview}
-                  </p>
-                  
-                  {/* My Action Items */}
-                  <div className="mb-3">
-                    <p className="text-xs font-medium text-muted-foreground mb-2">My Action Items:</p>
-                    <div className="space-y-1">
-                      {meeting.summary?.actionItems.slice(0, 2).map((item, i) => (
-                        <div key={i} className="flex items-start gap-2 text-sm">
-                          <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                          <span className="line-clamp-1">{item}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  
+                  <p className="text-sm text-muted-foreground mb-3">Summary available.</p>
                   <Button
                     variant="link"
                     size="sm"
@@ -269,6 +260,9 @@ const TeamMemberDashboard = () => {
                   </Button>
                 </div>
               ))}
+              {!loading && endedMeetings.length === 0 && (
+                <p className="text-sm text-muted-foreground col-span-2">No recent meetings yet.</p>
+              )}
             </div>
           </CardContent>
         </Card>
