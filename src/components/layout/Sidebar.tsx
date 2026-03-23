@@ -27,9 +27,9 @@ const Sidebar = ({ items, title, subtitle }: SidebarProps) => {
     location.pathname.includes("/business/member/");
 
   return (
-    <aside className="w-64 border-r bg-sidebar min-h-screen flex flex-col">
+    <aside className="w-56 border-r border-sidebar-border bg-sidebar min-h-screen flex flex-col">
       {/* Logo/Brand */}
-      <div className="p-6 border-b">
+      <div className="p-4 border-b border-sidebar-border">
         <Link to="/" className="flex items-center gap-2">
           <div className="h-8 w-8 rounded-lg gradient-primary flex items-center justify-center">
             <Sparkles className="h-5 w-5 text-primary-foreground" />
@@ -46,40 +46,39 @@ const Sidebar = ({ items, title, subtitle }: SidebarProps) => {
         )}
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 p-4">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 px-3">
+      {/* Navigation — Active pulse indicator */}
+      <nav className="flex-1 p-3">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3 px-2">
           {title}
         </p>
-        <ul className="space-y-1">
+        <ul className="space-y-0.5">
           {items.map((item) => {
             const isActive = location.pathname === item.href;
             const Icon = item.icon;
-            
             return (
               <li key={item.href}>
                 <Link
                   to={item.href}
                   className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                    isActive 
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground" 
+                    "relative flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm font-medium transition-colors",
+                    isActive
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground active-pulse"
                       : "text-sidebar-foreground hover:bg-sidebar-accent/50",
                     item.isPremium && "opacity-75"
                   )}
                 >
                   <Icon className={cn(
-                    "h-5 w-5",
+                    "h-4.5 w-4.5 shrink-0",
                     isActive ? "text-primary" : "text-muted-foreground"
                   )} />
-                  <span className="flex-1">{item.title}</span>
+                  <span className="flex-1 truncate">{item.title}</span>
                   {item.badge && (
-                    <Badge variant="secondary" className="h-5 min-w-5 px-1.5 text-xs">
+                    <Badge variant="secondary" className="h-5 min-w-5 px-1.5 text-xs rounded-full">
                       {item.badge}
                     </Badge>
                   )}
                   {item.isPremium && (
-                    <Lock className="h-3.5 w-3.5 text-premium" />
+                    <Lock className="h-3.5 w-3.5 text-premium shrink-0" />
                   )}
                 </Link>
               </li>
@@ -89,8 +88,8 @@ const Sidebar = ({ items, title, subtitle }: SidebarProps) => {
       </nav>
 
       {/* Upgrade CTA */}
-      <div className="p-4 border-t">
-        <div className="p-4 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 border border-primary/20">
+      <div className="p-3 border-t border-sidebar-border">
+        <div className="p-3 rounded-premium bg-gradient-to-br from-primary/10 to-secondary/10 border border-primary/20">
           <p className="font-medium text-sm mb-1">Upgrade to Pro</p>
           <p className="text-xs text-muted-foreground mb-3">
             Unlock advanced analytics and AI coaching

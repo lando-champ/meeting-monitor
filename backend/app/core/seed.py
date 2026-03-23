@@ -4,14 +4,9 @@ Creates initial users and projects for testing
 """
 from motor.motor_asyncio import AsyncIOMotorClient
 from app.core.config import settings
-from passlib.context import CryptContext
+from app.core.security import get_password_hash
 from datetime import datetime
 import asyncio
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
 
 async def seed_database():
     """Seed database with initial development data"""
@@ -31,7 +26,7 @@ async def seed_database():
             "email": "sarah.chen@company.com",
             "role": "manager",
             "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah",
-            "hashed_password": hash_password("password123"),
+            "hashed_password": get_password_hash("password123"),
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
         },
@@ -40,7 +35,7 @@ async def seed_database():
             "email": "michael.park@company.com",
             "role": "member",
             "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Michael",
-            "hashed_password": hash_password("password123"),
+            "hashed_password": get_password_hash("password123"),
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
         },
@@ -49,7 +44,7 @@ async def seed_database():
             "email": "prof.wilson@university.edu",
             "role": "teacher",
             "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=James",
-            "hashed_password": hash_password("password123"),
+            "hashed_password": get_password_hash("password123"),
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
         },
@@ -58,7 +53,7 @@ async def seed_database():
             "email": "emma.thompson@university.edu",
             "role": "student",
             "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Emma",
-            "hashed_password": hash_password("password123"),
+            "hashed_password": get_password_hash("password123"),
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
         },
@@ -67,7 +62,7 @@ async def seed_database():
             "email": "alex.johnson@university.edu",
             "role": "student",
             "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Alex",
-            "hashed_password": hash_password("password123"),
+            "hashed_password": get_password_hash("password123"),
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
         }

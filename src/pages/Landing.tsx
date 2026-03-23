@@ -3,7 +3,6 @@ import {
   Building2,
   Mic,
   ListTodo,
-  LayoutDashboard,
   TrendingUp,
   CheckCircle2,
   Lock,
@@ -33,9 +32,9 @@ const Landing = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Navigation */}
-      <nav className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+      {/* Navigation — Minimal, glass */}
+      <nav className="sticky top-0 z-50 glass border-b border-white/20 dark:border-white/10">
+        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="h-8 w-8 rounded-lg gradient-primary flex items-center justify-center">
               <Sparkles className="h-5 w-5 text-primary-foreground" />
@@ -89,62 +88,54 @@ const Landing = () => {
         </div>
       </nav>
 
-      {/* Hero Section */}
-      <section className="container mx-auto px-4 py-20 lg:py-32">
+      {/* Hero Section — Center H1 + gradient text + 3D floating preview */}
+      <section className="container mx-auto px-4 py-16 lg:py-24">
         <div className="max-w-4xl mx-auto text-center">
-          <Badge variant="secondary" className="mb-6 px-4 py-2">
+          <Badge variant="secondary" className="mb-6 px-4 py-2 rounded-full font-medium">
             <Sparkles className="h-3 w-3 mr-2" />
             AI-Powered Meeting Intelligence
           </Badge>
-          <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight">
+          <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight">
             Every output derived{' '}
-            <span className="text-primary">only from what's spoken</span>
+            <span className="gradient-text">only from what&apos;s spoken</span>
           </h1>
-          <p className="text-xl text-muted-foreground mb-12 max-w-2xl mx-auto">
-            Transform your meetings into actionable insights. Automatic transcription, 
+          <p className="text-lg md:text-xl text-muted-foreground mb-12 max-w-2xl mx-auto">
+            Transform your meetings into actionable insights. Automatic transcription,
             task extraction, and productivity tracking—all powered by AI.
           </p>
 
+          {/* 3D floating transcription preview */}
+          <div className="max-w-2xl mx-auto mb-14" style={{ perspective: '1000px' }}>
+            <div className="rounded-premium-lg glass-card shadow-elevated hover:shadow-hover transition-all duration-300 hover-lift p-6 md:p-8 transform-gpu shadow-xl" style={{ transform: 'rotateX(2deg) rotateY(-2deg)' }}>
+              <div className="flex items-center gap-2 mb-4">
+                <span className="h-3 w-3 rounded-full bg-success animate-pulse" />
+                <span className="text-sm font-medium text-muted-foreground">Live transcription</span>
+              </div>
+              <div className="text-left space-y-3 text-sm md:text-base text-foreground/90 font-medium">
+                <p><span className="text-primary font-semibold">Speaker 1:</span> &quot;We should ship the dashboard by Friday.&quot;</p>
+                <p><span className="text-secondary font-semibold">Speaker 2:</span> &quot;I&apos;ll own the API integration. Sarah, can you handle the front-end?&quot;</p>
+                <p><span className="text-primary font-semibold">Speaker 1:</span> &quot;Done. I&apos;ll add it to the board.&quot;</p>
+              </div>
+              <div className="mt-4 pt-4 border-t border-border/50 flex items-center gap-2 text-xs text-muted-foreground">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                Tasks extracted: 2 · Assigned automatically
+              </div>
+            </div>
+          </div>
+
           {/* CTA */}
-          <div className="max-w-md mx-auto">
+          <div className="max-w-sm mx-auto">
             <Link to="/business" className="group block">
-              <Card className="shadow-card hover:shadow-hover transition-all duration-300 border-2 border-transparent hover:border-primary/20">
-                <CardHeader className="text-center pb-4">
-                  <div className="mx-auto mb-4 h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                    <Building2 className="h-8 w-8 text-primary" />
-                  </div>
-                  <CardTitle className="text-2xl">For Business</CardTitle>
-                  <CardDescription className="text-base">
-                    Managers & Teams
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <ul className="space-y-3 text-sm text-muted-foreground mb-6">
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-success" />
-                      Team productivity analytics
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-success" />
-                      Auto-updated Kanban boards
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-success" />
-                      Smart task assignments
-                    </li>
-                  </ul>
-                  <Button className="w-full group-hover:bg-primary/90">
-                    Get Started
-                    <ArrowRight className="h-4 w-4 ml-2" />
-                  </Button>
-                </CardContent>
-              </Card>
+              <Button size="lg" className="w-full rounded-premium text-base h-12 group-hover:shadow-glow transition-shadow">
+                Get Started for Business
+                <ArrowRight className="h-4 w-4 ml-2" />
+              </Button>
             </Link>
           </div>
         </div>
       </section>
 
-      {/* Features Section */}
+      {/* Bento Grid Features — Auto Task Extraction + Team Analytics */}
       <section id="features" className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
@@ -156,62 +147,46 @@ const Landing = () => {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <Card className="shadow-card border-0 bg-card">
-              <CardHeader>
-                <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
-                  <Mic className="h-6 w-6 text-primary" />
+          <div className="grid grid-cols-1 md:grid-cols-6 md:grid-rows-2 gap-4 max-w-5xl mx-auto">
+            {/* Auto Task Extraction — large tile */}
+            <div className="md:col-span-4 md:row-span-2 rounded-premium-lg bg-card border shadow-card hover:shadow-elevated hover-lift transition-all duration-300 overflow-hidden p-6 md:p-8 flex flex-col justify-between shadow-[inset_0_1px_0_0_rgba(255,255,255,0.8)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
+              <div>
+                <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-5">
+                  <ListTodo className="h-7 w-7 text-primary" />
                 </div>
-                <CardTitle className="text-lg">Live Transcription</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground text-sm">
-                  Real-time speech-to-text with speaker detection. Every word captured accurately.
+                <h3 className="text-xl md:text-2xl font-bold mb-3">Auto Task Extraction</h3>
+                <p className="text-muted-foreground text-sm md:text-base max-w-md">
+                  AI identifies action items, assigns owners, and sets deadlines automatically—no manual entry.
                 </p>
-              </CardContent>
-            </Card>
+              </div>
+              <div className="mt-6 flex flex-wrap gap-2">
+                <Badge variant="secondary" className="rounded-full">Assignees</Badge>
+                <Badge variant="secondary" className="rounded-full">Due dates</Badge>
+                <Badge variant="secondary" className="rounded-full">Priority</Badge>
+              </div>
+            </div>
 
-            <Card className="shadow-card border-0 bg-card">
-              <CardHeader>
-                <div className="h-12 w-12 rounded-xl bg-secondary/10 flex items-center justify-center mb-4">
-                  <ListTodo className="h-6 w-6 text-secondary" />
-                </div>
-                <CardTitle className="text-lg">Auto Task Extraction</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground text-sm">
-                  AI identifies action items, assigns owners, and sets deadlines automatically.
-                </p>
-              </CardContent>
-            </Card>
+            {/* Team Analytics — top right */}
+            <div className="md:col-span-2 rounded-premium-lg bg-card border shadow-card hover:shadow-elevated hover-lift transition-all duration-300 p-6 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.8)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
+              <div className="h-12 w-12 rounded-xl bg-success/10 flex items-center justify-center mb-4">
+                <TrendingUp className="h-6 w-6 text-success" />
+              </div>
+              <h3 className="text-lg font-bold mb-2">Team Analytics</h3>
+              <p className="text-muted-foreground text-sm">
+                Track productivity, completion rates, and bottlenecks across the team.
+              </p>
+            </div>
 
-            <Card className="shadow-card border-0 bg-card">
-              <CardHeader>
-                <div className="h-12 w-12 rounded-xl bg-success/10 flex items-center justify-center mb-4">
-                  <LayoutDashboard className="h-6 w-6 text-success" />
-                </div>
-                <CardTitle className="text-lg">Smart Kanban</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground text-sm">
-                  Boards that update themselves based on meeting discussions.
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-card border-0 bg-card">
-              <CardHeader>
-                <div className="h-12 w-12 rounded-xl bg-warning/10 flex items-center justify-center mb-4">
-                  <TrendingUp className="h-6 w-6 text-warning" />
-                </div>
-                <CardTitle className="text-lg">Productivity Insights</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground text-sm">
-                  Track team performance, identify bottlenecks, and optimize workflows.
-                </p>
-              </CardContent>
-            </Card>
+            {/* Live Transcription — bottom right */}
+            <div className="md:col-span-2 rounded-premium-lg bg-card border shadow-card hover:shadow-elevated hover-lift transition-all duration-300 p-6 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.8)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
+              <div className="h-12 w-12 rounded-xl bg-secondary/10 flex items-center justify-center mb-4">
+                <Mic className="h-6 w-6 text-secondary" />
+              </div>
+              <h3 className="text-lg font-bold mb-2">Live Transcription</h3>
+              <p className="text-muted-foreground text-sm">
+                Real-time speech-to-text with speaker detection.
+              </p>
+            </div>
           </div>
         </div>
       </section>
@@ -313,7 +288,7 @@ const Landing = () => {
 
           <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
             {/* Free Tier */}
-            <Card className="shadow-card">
+            <Card className="shadow-card rounded-premium hover-lift">
               <CardHeader>
                 <CardTitle className="text-2xl">Free</CardTitle>
                 <CardDescription>Perfect for getting started</CardDescription>
@@ -353,10 +328,10 @@ const Landing = () => {
               </CardContent>
             </Card>
 
-            {/* Pro Tier */}
-            <Card className="shadow-card border-2 border-premium/30 relative overflow-hidden">
-              <div className="absolute top-0 right-0 px-4 py-1 gradient-premium text-premium-foreground text-sm font-medium rounded-bl-lg">
-                Popular
+            {/* Pro Tier — Most Popular glowing border */}
+            <Card className="shadow-card relative overflow-hidden rounded-premium border-2 border-primary/30 shadow-glow ring-2 ring-primary/20">
+              <div className="absolute top-0 right-0 px-4 py-1.5 gradient-premium text-premium-foreground text-sm font-semibold rounded-bl-premium">
+                Most Popular
               </div>
               <CardHeader>
                 <CardTitle className="text-2xl">Pro</CardTitle>

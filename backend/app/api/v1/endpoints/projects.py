@@ -135,7 +135,7 @@ async def extract_project_tasks(
     project: dict = Depends(verify_project_membership),
     current_user: User = Depends(get_current_user),
 ):
-    """Extract tasks from meeting transcripts for this project (Groq LLM) and sync to Kairox board."""
+    """Sync Kanban tasks from stored meeting action_items (no LLM)."""
     from app.services.project_task_extractor import sync_tasks_to_kairox
     await sync_tasks_to_kairox(project_id)
     return {"message": "Tasks extracted and synced", "project_id": project_id}

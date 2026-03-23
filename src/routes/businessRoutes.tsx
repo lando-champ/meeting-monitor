@@ -21,7 +21,7 @@ import { useWorkspace, WorkspaceRole } from "@/context/WorkspaceContext";
 
 const WorkspaceGate = ({ role }: { role: WorkspaceRole }) => {
   const { workspaceId } = useParams();
-  const { setRole, ensureWorkspace, hasAccessToWorkspace } = useWorkspace();
+  const { setRole, ensureWorkspace, hasAccessToWorkspace, workspacesLoading } = useWorkspace();
   const navigate = useNavigate();
   const basePath =
     role === "manager" ? "/business/manager/workspaces" : "/business/member/workspaces";
@@ -31,10 +31,25 @@ const WorkspaceGate = ({ role }: { role: WorkspaceRole }) => {
     if (workspaceId) {
       ensureWorkspace(workspaceId);
     }
-    if (workspaceId && !hasAccessToWorkspace(workspaceId)) {
+  }, [role, setRole, ensureWorkspace, workspaceId]);
+
+  useEffect(() => {
+    if (workspacesLoading || !workspaceId) return;
+    if (!hasAccessToWorkspace(workspaceId)) {
       navigate(basePath, { replace: true });
     }
-  }, [role, setRole, ensureWorkspace, workspaceId, hasAccessToWorkspace, navigate, basePath]);
+  }, [workspacesLoading, workspaceId, hasAccessToWorkspace, navigate, basePath]);
+
+  if (workspacesLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-muted-foreground flex items-center gap-2">
+          <span className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          Loading workspace…
+        </div>
+      </div>
+    );
+  }
 
   return <Outlet />;
 };

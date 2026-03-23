@@ -1,23 +1,25 @@
 """
-Clear all data from the meeting_monitor database.
+Clear data from meeting_monitor collections used by the app.
 Run with: python -m scripts.clear_db
 """
-import sys
-import os
 import asyncio
+import os
+import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from motor.motor_asyncio import AsyncIOMotorClient
 from app.core.config import settings
 
-
 COLLECTIONS = [
     "users",
     "projects",
     "meetings",
-    "attendance",
+    "transcript_segments",
     "transcripts",
+    "attendance_records",
+    "summaries",
+    "action_items",
     "tasks",
     "documents",
 ]
@@ -27,7 +29,7 @@ async def clear_database():
     client = AsyncIOMotorClient(settings.MONGODB_URL)
     db = client[settings.MONGODB_DB_NAME]
 
-    print(f"Clearing all data in database: {settings.MONGODB_DB_NAME}\n")
+    print(f"Clearing collections in database: {settings.MONGODB_DB_NAME}\n")
 
     for name in COLLECTIONS:
         try:
@@ -37,7 +39,7 @@ async def clear_database():
             print(f"   {name}: skip ({e})")
 
     client.close()
-    print("\nDone. Database cleared. Restart the server to recreate indexes if needed.")
+    print("\nDone. Restart the server to recreate indexes if needed.")
 
 
 if __name__ == "__main__":

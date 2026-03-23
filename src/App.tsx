@@ -1,4 +1,4 @@
-import { Component, type ReactNode } from "react";
+import { Component, useEffect, type ReactNode } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -17,23 +17,54 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-class AuthErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
-  state = { hasError: false };
-  static getDerivedStateFromError() {
-    return { hasError: true };
+function SessionRecoveryScreen() {
+  useEffect(() => {
+    const t = setTimeout(() => {
+      window.location.href = "/auth";
+    }, 2500);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="text-center space-y-4 p-6">
+        <p className="text-muted-foreground">Something went wrong with your session. Redirecting you to sign in…</p>
+        <a href="/auth" className="text-primary font-medium underline hover:no-underline">Go to login</a>
+      </div>
+    </div>
+  );
+}
+
+class AuthErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; isAuthError: boolean }> {
+  state = { hasError: false, isAuthError: false };
+  static getDerivedStateFromError(_error: Error) {
+    return {};
   }
   componentDidCatch(error: Error) {
-    if (error?.message?.includes("useAuth must be used within AuthProvider")) {
-      this.setState({ hasError: true });
-    }
+    const msg = error?.message ?? "";
+    const isAuthError =
+      msg.includes("useAuth must be used within AuthProvider") ||
+      msg.includes("useWorkspace must be used within a WorkspaceProvider");
+    this.setState({ hasError: true, isAuthError });
   }
   render() {
     if (this.state.hasError) {
-      return (
+      return this.state.isAuthError ? (
+        <SessionRecoveryScreen />
+      ) : (
         <div className="min-h-screen flex items-center justify-center bg-background">
-          <div className="text-center space-y-2">
-            <p className="text-muted-foreground">Session issue. Redirecting to login…</p>
-            <a href="/auth" className="text-primary underline">Go to login</a>
+          <div className="text-center space-y-4 p-6 max-w-sm">
+            <p className="text-muted-foreground">Something went wrong loading this page.</p>
+            <div className="flex flex-col sm:flex-row gap-2 justify-center">
+              <a href="/" className="text-primary font-medium underline hover:no-underline">Go to home</a>
+              <span className="hidden sm:inline text-muted-foreground">·</span>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="text-primary font-medium underline hover:no-underline"
+              >
+                Refresh page
+              </button>
+            </div>
           </div>
         </div>
       );
@@ -50,7 +81,7 @@ const App = () => (
       <AuthProvider>
       <WorkspaceProvider>
           <AuthErrorBoundary>
-          <BrowserRouter>
+          <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <Routes>
               {/* Public */}
               <Route path="/" element={<Landing />} />

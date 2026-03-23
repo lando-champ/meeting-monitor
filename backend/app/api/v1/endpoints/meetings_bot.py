@@ -10,14 +10,14 @@ from bson import ObjectId
 from app.core.database import get_database
 from app.core.dependencies import get_current_active_user, verify_project_membership
 from app.models.user import User
-from app.nlp import get_nlp_service
 from app.attendance import AttendanceTracker
 from app.api.v1.endpoints.meeting_bot_ws import ws_manager
+from app.services.meetings_ops import run_meeting_intelligence
 
 router = APIRouter()
 
-# Bot manager will be set when bot package is loaded (avoids circular import)
 _bot_manager = None
+
 
 def set_bot_manager(manager):
     global _bot_manager
@@ -163,6 +163,7 @@ async def get_meeting(
         "summary": {
             "summary_text": summary_doc.get("summary_text") if summary_doc else None,
             "key_points": summary_doc.get("key_points") if summary_doc else None,
+            "decisions": summary_doc.get("decisions") if summary_doc else None,
         } if summary_doc else None,
         "action_items": [{"text": a.get("text"), "status": a.get("status")} for a in action_docs],
         "total_participants": unique_participants,
@@ -184,7 +185,6 @@ async def start_meeting(
         raise HTTPException(status_code=400, detail="Invalid meeting ID")
     meeting = await db.meetings.find_one({"_id": oid})
     if not meeting:
-        # Create minimal meeting doc
         await db.meetings.insert_one({
             "_id": oid,
             "project_id": body.get("project_id"),
@@ -212,8 +212,7 @@ async def stop_meeting(
     meeting_id: str,
     current_user: User = Depends(get_current_active_user),
 ):
-    """Stop bot, set meeting ended, run summary + action items, then extract tasks to Kairox if project linked."""
-    import asyncio
+    """Stop bot, end meeting, one Groq pass for summary + action items; sync Kanban from action_items if project linked."""
     db = await get_database()
     try:
         oid = ObjectId(meeting_id)
@@ -228,15 +227,7 @@ async def stop_meeting(
         {"_id": oid},
         {"$set": {"status": "ended", "ended_at": datetime.utcnow()}},
     )
-    nlp = get_nlp_service()
-    await nlp.generate_summary(meeting_id, "en")
-    await nlp.extract_action_items(meeting_id, "en")
-    if project_id:
-        try:
-            from app.services.project_task_extractor import sync_tasks_to_kairox
-            asyncio.create_task(sync_tasks_to_kairox(project_id))
-        except Exception:
-            pass
+    await run_meeting_intelligence(meeting_id, language="en", project_id=project_id, sync_kanban=True)
     return {"message": "Meeting stopped", "meeting_id": meeting_id}
 
 
@@ -246,9 +237,50 @@ async def generate_summary(
     body: Optional[dict] = Body(None),
     current_user: User = Depends(get_current_active_user),
 ):
-    """On-demand summary and action items for a meeting (e.g. in a given language)."""
+    """On-demand summary and action items (single LLM call)."""
     lang = (body or {}).get("language", "en")
-    nlp = get_nlp_service()
-    await nlp.generate_summary(meeting_id, lang)
-    await nlp.extract_action_items(meeting_id, lang)
+    db = await get_database()
+    try:
+        oid = ObjectId(meeting_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid meeting ID")
+    meeting = await db.meetings.find_one({"_id": oid})
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    if meeting.get("project_id"):
+        await verify_project_membership(meeting["project_id"], current_user)
+    await run_meeting_intelligence(
+        meeting_id,
+        language=lang,
+        project_id=meeting.get("project_id"),
+        sync_kanban=bool(meeting.get("project_id")),
+    )
     return {"message": "Summary generated", "meeting_id": meeting_id}
+
+
+@router.delete("/{meeting_id}", status_code=status.HTTP_200_OK)
+async def delete_meeting(
+    meeting_id: str,
+    current_user: User = Depends(get_current_active_user),
+):
+    """Delete a meeting and all related data (transcripts, attendance, summary, action items)."""
+    db = await get_database()
+    try:
+        oid = ObjectId(meeting_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid meeting ID")
+    meeting = await db.meetings.find_one({"_id": oid})
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    if meeting.get("project_id"):
+        await verify_project_membership(meeting["project_id"], current_user)
+    if meeting.get("status") == "live" and _bot_manager:
+        await _bot_manager.stop_bot(meeting_id)
+    ws_manager.remove_meeting(meeting_id)
+    await db.transcript_segments.delete_many({"meeting_id": meeting_id})
+    await db.transcripts.delete_many({"meeting_id": meeting_id})
+    await db.attendance_records.delete_many({"meeting_id": meeting_id})
+    await db.summaries.delete_many({"meeting_id": meeting_id})
+    await db.action_items.delete_many({"meeting_id": meeting_id})
+    await db.meetings.delete_one({"_id": oid})
+    return {"message": "Meeting deleted", "meeting_id": meeting_id}

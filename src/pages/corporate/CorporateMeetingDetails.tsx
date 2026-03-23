@@ -11,6 +11,7 @@ import {
   Loader2,
   Clock,
   UserCircle,
+  Trash2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -24,9 +25,20 @@ import {
   startMeeting,
   stopMeeting,
   generateMeetingSummary,
+  deleteMeeting,
   type MeetingBotDetail,
 } from "@/lib/api";
 import LiveMeetingTranscript from "@/components/meeting/LiveMeetingTranscript";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface CorporateMeetingDetailsProps {
   role: "manager" | "member";
@@ -41,6 +53,8 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
   const [stopping, setStopping] = useState(false);
   const [starting, setStarting] = useState(false);
   const [generatingSummary, setGeneratingSummary] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const basePath =
     role === "manager"
@@ -65,6 +79,17 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
       .catch(() => setApiDetail(null))
       .finally(() => setLoading(false));
   }, [meetingId, token]);
+
+  // When just opened with status "scheduled", poll a few times so we pick up "live" as soon as the meeting starts
+  useEffect(() => {
+    if (!apiDetail || apiDetail.meeting.status !== "scheduled" || !meetingId || !token) return;
+    const t1 = setTimeout(loadDetail, 1500);
+    const t2 = setTimeout(loadDetail, 4000);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [apiDetail?.meeting.status, meetingId, token]);
 
   // Poll when live to refresh attendance/status
   useEffect(() => {
@@ -107,6 +132,18 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
       loadDetail();
     } finally {
       setGeneratingSummary(false);
+    }
+  };
+
+  const handleDeleteMeeting = async () => {
+    if (!token || !meetingId) return;
+    setDeleting(true);
+    try {
+      await deleteMeeting(token, meetingId);
+      setDeleteDialogOpen(false);
+      navigate(`${basePath}/meetings`);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -161,8 +198,42 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
                 Stop meeting
               </Button>
             )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => setDeleteDialogOpen(true)}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete meeting
+            </Button>
           </div>
         </div>
+
+        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete meeting?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently remove this meeting and all its data (transcript, attendance, summary, action items). This cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleDeleteMeeting();
+                }}
+                disabled={deleting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Title and status */}
         <div>

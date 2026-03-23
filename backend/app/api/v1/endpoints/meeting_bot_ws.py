@@ -27,8 +27,8 @@ class WebSocketManager:
     def ensure_pipeline(self, meeting_id: str) -> None:
         if meeting_id in self._pipelines:
             return
-        # Use VAD to drop non-speech and reduce hallucinated text
-        self._processors[meeting_id] = AudioProcessor(use_vad=True)
+        # use_vad=False so we keep buffering all audio; otherwise VAD drops silence and buffer never fills after first speech
+        self._processors[meeting_id] = AudioProcessor(use_vad=False)
         async def push(mid: str, text: str):
             await self.broadcast_transcript(mid, text)
         self._pipelines[meeting_id] = STTPipeline(
@@ -44,8 +44,8 @@ class WebSocketManager:
         chunk = proc.process_audio_frame(data)
         if chunk:
             pipeline.process_audio(chunk)
-            await pipeline.process_buffer()
-        # Flush remaining on disconnect is optional
+            # Run transcription in background so we don't block receiving more audio (avoids backlog/timeout)
+            asyncio.create_task(pipeline.process_buffer())
 
     def subscribe(self, meeting_id: str, ws: WebSocket) -> None:
         if meeting_id not in self._subscribers:

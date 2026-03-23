@@ -74,6 +74,13 @@ export default {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        "premium": "16px",
+        "premium-lg": "24px",
+      },
+      boxShadow: {
+        "glow": "0 0 0 1px hsl(var(--primary) / 0.2), 0 0 24px -4px hsl(var(--primary) / 0.35)",
+        "glow-success": "0 0 0 1px hsl(var(--success) / 0.2), 0 0 20px -4px hsl(var(--success) / 0.25)",
+        "neumorphic": "6px 6px 12px rgba(0,0,0,0.06), -6px -6px 12px rgba(255,255,255,0.9)",
       },
       keyframes: {
         "accordion-down": {
@@ -100,6 +107,10 @@ export default {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0.7" },
         },
+        "gradient-shift": {
+          "0%, 100%": { backgroundPosition: "0% center" },
+          "50%": { backgroundPosition: "100% center" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -108,6 +119,7 @@ export default {
         "scale-in": "scale-in 0.3s ease-out",
         "slide-in-right": "slide-in-right 0.3s ease-out",
         "pulse-soft": "pulse-soft 2s ease-in-out infinite",
+        "gradient-shift": "gradient-shift 4s ease-in-out infinite",
       },
     },
   },

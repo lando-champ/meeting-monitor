@@ -5,6 +5,7 @@ import {
   createProject,
   joinProject,
   leaveProject,
+  isUnauthorized,
   type ApiProject,
   type ProjectMember,
 } from "@/lib/api";
@@ -26,6 +27,7 @@ export interface Workspace {
 interface WorkspaceContextValue {
   role: WorkspaceRole | null;
   workspaces: Workspace[];
+  workspacesLoading: boolean;
   currentWorkspaceId: string | null;
   currentWorkspace: Workspace | null;
   currentUserEmail: string;
@@ -46,8 +48,9 @@ interface WorkspaceContextValue {
 const WorkspaceContext = createContext<WorkspaceContextValue | undefined>(undefined);
 
 function mapApiProjectToWorkspace(p: ApiProject): Workspace {
-  const owner = p.member_details?.find((m) => m.id === p.owner_id);
-  const memberEmails = (p.member_details ?? []).map((m) => m.email);
+  const details = Array.isArray(p.member_details) ? p.member_details : [];
+  const owner = details.find((m) => m.id === p.owner_id);
+  const memberEmails = details.map((m) => (m && typeof m === "object" && "email" in m ? m.email : "")).filter(Boolean);
   return {
     id: p.id,
     name: p.name,
@@ -56,13 +59,13 @@ function mapApiProjectToWorkspace(p: ApiProject): Workspace {
     ownerId: p.owner_id,
     ownerEmail: owner?.email ?? "",
     members: memberEmails,
-    membersCount: (p.member_details ?? []).length,
-    memberDetails: p.member_details ?? [],
+    membersCount: details.length,
+    memberDetails: details,
   };
 }
 
 export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) => {
-  const { user, token } = useAuth();
+  const { user, token, logout } = useAuth();
   const [role, setRole] = useState<WorkspaceRole | null>(null);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string | null>(null);
@@ -78,14 +81,20 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
     }
     try {
       const list = await listProjects(token, "workspace");
-      setWorkspaces(list.map(mapApiProjectToWorkspace));
-      setCurrentWorkspaceId((id) => (id && list.some((p) => p.id === id)) ? id : (list[0]?.id ?? null));
-    } catch {
+      setWorkspaces((Array.isArray(list) ? list : []).map(mapApiProjectToWorkspace));
+      setCurrentWorkspaceId((id) => {
+        const arr = Array.isArray(list) ? list : [];
+        return id && arr.some((p) => p.id === id) ? id : (arr[0]?.id ?? null);
+      });
+    } catch (e) {
+      if (isUnauthorized(e)) {
+        logout();
+      }
       setWorkspaces([]);
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, logout]);
 
   useEffect(() => {
     setLoading(true);
@@ -243,6 +252,7 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
     [
       role,
       workspaces,
+      loading,
       currentWorkspaceId,
       currentWorkspace,
       currentUserEmail,

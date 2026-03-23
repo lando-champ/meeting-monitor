@@ -1,6 +1,11 @@
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
 from typing import List, Union, Optional
+
+# Resolve .env from backend directory so it loads even when running from project root
+_BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+_ENV_FILE = _BACKEND_DIR / ".env"
 
 class Settings(BaseSettings):
     # MongoDB
@@ -12,7 +17,7 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
-    # Groq API
+    # Groq API (for Whisper transcription). Get a key at https://console.groq.com
     GROQ_API_KEY: str = ""
     
     # CORS - accept list or comma-separated / JSON string from env
@@ -43,6 +48,18 @@ class Settings(BaseSettings):
     AUDIO_INPUT_DEVICE: Optional[Union[int, str]] = None
     # STT buffer seconds before calling Whisper (smaller = faster first transcript, more API calls)
     STT_BUFFER_SECONDS: float = 3.0
+    # Skip sending chunks with RMS below this to reduce "Thank you" hallucinations on silence (set 0 to disable)
+    STT_SILENCE_RMS_THRESHOLD: float = 100.0
+
+    @field_validator("GROQ_API_KEY", mode="before")
+    @classmethod
+    def strip_groq_api_key(cls, v: str) -> str:
+        if v is None:
+            return ""
+        s = (v or "").strip().strip('"').strip("'").strip("\r")
+        if s.startswith("\ufeff"):
+            s = s[1:]  # BOM
+        return s
 
     @field_validator("AUDIO_INPUT_DEVICE", mode="before")
     @classmethod
@@ -70,7 +87,8 @@ class Settings(BaseSettings):
         return []
     
     class Config:
-        env_file = ".env"
+        env_file = str(_ENV_FILE) if _ENV_FILE.exists() else ".env"
+        env_file_encoding = "utf-8"
         case_sensitive = True
 
 settings = Settings()

@@ -150,6 +150,21 @@ export async function getMeetingDetail(token: string, meetingId: string): Promis
   return res.json();
 }
 
+export async function deleteMeeting(
+  token: string,
+  meetingId: string
+): Promise<{ message: string; meeting_id: string }> {
+  const res = await fetch(`${apiBaseUrl}/api/v1/meetings/${meetingId}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(token),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(typeof err.detail === "string" ? err.detail : "Failed to delete meeting");
+  }
+  return res.json();
+}
+
 export async function generateMeetingSummary(
   token: string,
   meetingId: string,
@@ -223,6 +238,11 @@ export async function createProject(
   return res.json();
 }
 
+/** Use in catch blocks to detect 401 and clear session (e.g. call logout). */
+export function isUnauthorized(error: unknown): boolean {
+  return (error as { status?: number })?.status === 401;
+}
+
 export async function listProjects(
   token: string,
   projectType?: "workspace" | "class"
@@ -231,7 +251,11 @@ export async function listProjects(
     ? `${apiBaseUrl}/api/v1/projects?project_type=${projectType}`
     : `${apiBaseUrl}/api/v1/projects`;
   const res = await fetch(url, { headers: getAuthHeaders(token) });
-  if (!res.ok) throw new Error("Failed to load projects");
+  if (!res.ok) {
+    const err = new Error(res.status === 401 ? "Session expired" : "Failed to load projects") as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
 }
 

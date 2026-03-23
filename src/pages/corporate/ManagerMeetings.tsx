@@ -35,6 +35,12 @@ import {
 import UploadMeeting from '@/components/meetings/UploadMeeting';
 import { format, isSameDay } from 'date-fns';
 import { cn } from '@/lib/utils';
+
+function safeFormat(dateInput: string | Date | null | undefined, fmt: string, fallback = '—'): string {
+  if (dateInput == null) return fallback;
+  const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+  return Number.isNaN(d.getTime()) ? fallback : format(d, fmt);
+}
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
@@ -64,7 +70,7 @@ import {
 function RecordingHistoryItem({ recording }: { recording: MeetingRecordingApi }) {
   const [open, setOpen] = useState(false);
   const summary = recording.summary ?? recording.summary_dict;
-  const created = recording.created_at ? format(new Date(recording.created_at), 'MMM d, yyyy • h:mm a') : '';
+  const created = safeFormat(recording.created_at, 'MMM d, yyyy • h:mm a', '');
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
@@ -279,6 +285,7 @@ const ManagerMeetings = () => {
       setLiveBotOpen(false);
       setLiveBotTitle('');
       setLiveBotUrl('');
+      await fetchBotMeetings();
       navigate(`${basePath}/meeting/${id}`);
     } catch (e) {
       setLiveBotError(e instanceof Error ? e.message : 'Failed to start meeting');
@@ -316,6 +323,15 @@ const ManagerMeetings = () => {
     () => botMeetings.filter((m) => m.status === 'ended'),
     [botMeetings],
   );
+  const allMeetingsForHistory = useMemo(
+    () =>
+      [...botMeetings].sort((a, b) => {
+        const aTime = a.ended_at || a.started_at || '';
+        const bTime = b.ended_at || b.started_at || '';
+        return bTime.localeCompare(aTime);
+      }),
+    [botMeetings],
+  );
   const allCalendarMeetings = useMemo(
     () => botMeetings.filter((m) => m.started_at || m.status === 'scheduled'),
     [botMeetings],
@@ -324,6 +340,13 @@ const ManagerMeetings = () => {
     if (!selectedDate) return [];
     return allCalendarMeetings.filter((m) => m.started_at && isSameDay(new Date(m.started_at), selectedDate));
   }, [allCalendarMeetings, selectedDate]);
+
+  // Poll meetings list when there is a live meeting so Meeting History shows updated status
+  useEffect(() => {
+    if (!token || !workspaceId || liveMeetings.length === 0) return;
+    const interval = setInterval(fetchBotMeetings, 10000);
+    return () => clearInterval(interval);
+  }, [token, workspaceId, liveMeetings.length, fetchBotMeetings]);
 
   const managerSidebarItems: SidebarItem[] = [
     { title: 'Dashboard', href: `${basePath}/dashboard`, icon: LayoutDashboard },
@@ -569,9 +592,9 @@ const ManagerMeetings = () => {
                         )}
                         {meetingsForSelectedDate.map((meeting) => (
                           <div key={meeting.id} className="p-3 border rounded-lg">
-                            <p className="font-medium">{meeting.title}</p>
+                            <p className="font-medium">{meeting.title ?? 'Meeting'}</p>
                             <p className="text-sm text-muted-foreground">
-                              {format(meeting.startTime, 'h:mm a')} • {meeting.status}
+                              {safeFormat(meeting.started_at, 'h:mm a')} • {meeting.status}
                             </p>
                           </div>
                         ))}
@@ -596,7 +619,7 @@ const ManagerMeetings = () => {
                         <p className="font-medium">{meeting.title ?? 'Meeting'}</p>
                         <p className="text-sm text-muted-foreground flex items-center gap-2">
                           <Clock className="h-3 w-3" />
-                          {meeting.started_at ? format(new Date(meeting.started_at), 'MMM d, h:mm a') : 'Scheduled'}
+                          {safeFormat(meeting.started_at, 'MMM d, h:mm a', 'Scheduled')}
                         </p>
                       </div>
                     </div>
@@ -647,32 +670,63 @@ const ManagerMeetings = () => {
           </CardContent>
         </Card>
 
-        {/* Meeting History */}
+        {/* Meeting History — all meetings (scheduled, live, ended) so details update as soon as a meeting starts */}
         <Card className="shadow-card">
           <CardHeader>
             <CardTitle>Meeting History</CardTitle>
-            <CardDescription>Past meetings with AI-generated summaries</CardDescription>
+            <CardDescription>All meetings. Open any meeting to see live transcript, details, and summary.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {completedMeetings.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-2">No past meetings yet.</p>
+              {allMeetingsForHistory.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2">No meetings yet. Create or start one above.</p>
               ) : (
-                completedMeetings.map((meeting) => (
-                  <div key={meeting.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 cursor-pointer" onClick={() => navigate(`${basePath}/meeting/${meeting.id}`)}>
+                allMeetingsForHistory.map((meeting) => (
+                  <div
+                    key={meeting.id}
+                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                    onClick={() => navigate(`${basePath}/meeting/${meeting.id}`)}
+                  >
                     <div className="flex items-center gap-4">
-                      <div className={cn('h-10 w-10 rounded-lg flex items-center justify-center', 'bg-success/10')}>
-                        <CheckCircle2 className="h-5 w-5 text-success" />
+                      <div
+                        className={cn(
+                          'h-10 w-10 rounded-lg flex items-center justify-center',
+                          meeting.status === 'live' && 'bg-primary/10',
+                          meeting.status === 'ended' && 'bg-success/10',
+                          meeting.status === 'scheduled' && 'bg-muted'
+                        )}
+                      >
+                        {meeting.status === 'live' ? (
+                          <Play className="h-5 w-5 text-primary" />
+                        ) : meeting.status === 'ended' ? (
+                          <CheckCircle2 className="h-5 w-5 text-success" />
+                        ) : (
+                          <Clock className="h-5 w-5 text-muted-foreground" />
+                        )}
                       </div>
                       <div>
                         <p className="font-medium">{meeting.title ?? 'Meeting'}</p>
                         <p className="text-sm text-muted-foreground">
-                          {meeting.ended_at ? format(new Date(meeting.ended_at), 'MMMM d, yyyy • h:mm a') : meeting.started_at ? format(new Date(meeting.started_at), 'MMMM d, yyyy') : '—'}
+                          {meeting.ended_at
+                              ? safeFormat(meeting.ended_at, 'MMMM d, yyyy • h:mm a')
+                              : meeting.started_at
+                                ? `Started ${safeFormat(meeting.started_at, 'MMM d, h:mm a')}`
+                                : 'Scheduled'}
                         </p>
                       </div>
+                      <Badge variant={meeting.status === 'live' ? 'default' : 'secondary'} className="capitalize shrink-0">
+                        {meeting.status}
+                      </Badge>
                     </div>
-                    <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); navigate(`${basePath}/meeting/${meeting.id}`); }}>
-                      View Summary
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`${basePath}/meeting/${meeting.id}`);
+                      }}
+                    >
+                      {meeting.status === 'live' ? 'Open live' : 'View details'}
                     </Button>
                   </div>
                 ))
