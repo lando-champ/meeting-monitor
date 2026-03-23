@@ -174,11 +174,6 @@ const ManagerMeetings = () => {
   const [recordingsLoading, setRecordingsLoading] = useState(false);
   const [botMeetings, setBotMeetings] = useState<MeetingBotListItem[]>([]);
   const [botMeetingsLoading, setBotMeetingsLoading] = useState(false);
-  const [liveBotOpen, setLiveBotOpen] = useState(false);
-  const [liveBotTitle, setLiveBotTitle] = useState('');
-  const [liveBotUrl, setLiveBotUrl] = useState('');
-  const [liveBotError, setLiveBotError] = useState('');
-  const [liveBotStarting, setLiveBotStarting] = useState(false);
   const [createMeetingOpen, setCreateMeetingOpen] = useState(false);
   const [createTitle, setCreateTitle] = useState('');
   const [createUrl, setCreateUrl] = useState('');
@@ -260,37 +255,6 @@ const ManagerMeetings = () => {
       await fetchBotMeetings();
     } finally {
       setStoppingId(null);
-    }
-  };
-
-  const handleStartLiveMeeting = async () => {
-    if (!token || !liveBotUrl.trim()) {
-      setLiveBotError('Meeting URL is required (e.g. Jitsi Meet link).');
-      return;
-    }
-    const url = liveBotUrl.trim();
-    if (!/^https?:\/\//i.test(url)) {
-      setLiveBotError('URL must start with http:// or https://');
-      return;
-    }
-    setLiveBotError('');
-    setLiveBotStarting(true);
-    try {
-      const { id } = await createMeeting(token, {
-        project_id: workspaceId,
-        title: liveBotTitle.trim() || 'Live Meeting',
-        meeting_url: url,
-      });
-      await startMeeting(token, id, { meeting_url: url, project_id: workspaceId, title: liveBotTitle.trim() || 'Live Meeting' });
-      setLiveBotOpen(false);
-      setLiveBotTitle('');
-      setLiveBotUrl('');
-      await fetchBotMeetings();
-      navigate(`${basePath}/meeting/${id}`);
-    } catch (e) {
-      setLiveBotError(e instanceof Error ? e.message : 'Failed to start meeting');
-    } finally {
-      setLiveBotStarting(false);
     }
   };
 
@@ -421,46 +385,6 @@ const ManagerMeetings = () => {
                     <Button onClick={handleCreateMeeting} disabled={createSubmitting}>
                       {createSubmitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
                       Create
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-              <Dialog open={liveBotOpen} onOpenChange={(open) => { setLiveBotOpen(open); setLiveBotError(''); }}>
-                <DialogTrigger asChild>
-                  <Button>
-                    <Play className="h-4 w-4 mr-2" />
-                    Start live meeting
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Start live meeting with transcription bot</DialogTitle>
-                    <DialogDescription>
-                      Enter a Jitsi Meet (or other) meeting URL. The bot will join and stream audio for real-time transcription.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-3">
-                    <Label htmlFor="live-bot-title">Title (optional)</Label>
-                    <Input
-                      id="live-bot-title"
-                      placeholder="Daily standup"
-                      value={liveBotTitle}
-                      onChange={(e) => setLiveBotTitle(e.target.value)}
-                    />
-                    <Label htmlFor="live-bot-url">Meeting URL *</Label>
-                    <Input
-                      id="live-bot-url"
-                      placeholder="https://meet.jit.si/YourRoomName"
-                      value={liveBotUrl}
-                      onChange={(e) => { setLiveBotUrl(e.target.value); setLiveBotError(''); }}
-                    />
-                    {liveBotError && <p className="text-sm text-destructive">{liveBotError}</p>}
-                  </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setLiveBotOpen(false)}>Cancel</Button>
-                    <Button onClick={handleStartLiveMeeting} disabled={liveBotStarting}>
-                      {liveBotStarting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                      Create & start
                     </Button>
                   </DialogFooter>
                 </DialogContent>

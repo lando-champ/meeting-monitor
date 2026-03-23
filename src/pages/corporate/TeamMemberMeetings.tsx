@@ -22,19 +22,8 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { listMeetings, createMeeting, startMeeting, type MeetingBotListItem } from '@/lib/api';
+import { listMeetings, type MeetingBotListItem } from '@/lib/api';
 import { useCallback, useEffect, useState } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 
 const TeamMemberMeetings = () => {
   const { workspaceId = "alpha" } = useParams();
@@ -43,11 +32,6 @@ const TeamMemberMeetings = () => {
   const basePath = `/business/member/workspaces/${workspaceId}`;
   const [botMeetings, setBotMeetings] = useState<MeetingBotListItem[]>([]);
   const [botMeetingsLoading, setBotMeetingsLoading] = useState(false);
-  const [liveBotOpen, setLiveBotOpen] = useState(false);
-  const [liveBotTitle, setLiveBotTitle] = useState('');
-  const [liveBotUrl, setLiveBotUrl] = useState('');
-  const [liveBotError, setLiveBotError] = useState('');
-  const [liveBotStarting, setLiveBotStarting] = useState(false);
 
   const fetchBotMeetings = useCallback(async () => {
     if (!token || !workspaceId) return;
@@ -66,35 +50,6 @@ const TeamMemberMeetings = () => {
     fetchBotMeetings();
   }, [fetchBotMeetings]);
 
-  const handleStartLiveMeeting = async () => {
-    if (!token || !liveBotUrl.trim()) {
-      setLiveBotError('Meeting URL is required (e.g. Jitsi Meet link).');
-      return;
-    }
-    const url = liveBotUrl.trim();
-    if (!/^https?:\/\//i.test(url)) {
-      setLiveBotError('URL must start with http:// or https://');
-      return;
-    }
-    setLiveBotError('');
-    setLiveBotStarting(true);
-    try {
-      const { id } = await createMeeting(token, {
-        project_id: workspaceId,
-        title: liveBotTitle.trim() || 'Live Meeting',
-        meeting_url: url,
-      });
-      await startMeeting(token, id, { meeting_url: url, project_id: workspaceId, title: liveBotTitle.trim() || 'Live Meeting' });
-      setLiveBotOpen(false);
-      setLiveBotTitle('');
-      setLiveBotUrl('');
-      navigate(`${basePath}/meeting/${id}`);
-    } catch (e) {
-      setLiveBotError(e instanceof Error ? e.message : 'Failed to start meeting');
-    } finally {
-      setLiveBotStarting(false);
-    }
-  };
   const teamMemberSidebarItems: SidebarItem[] = [
     { title: 'Dashboard', href: `${basePath}/dashboard`, icon: LayoutDashboard },
     { title: 'Meetings', href: `${basePath}/meetings`, icon: Calendar },
