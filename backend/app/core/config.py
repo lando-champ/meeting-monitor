@@ -47,9 +47,28 @@ class Settings(BaseSettings):
     # Leave unset to use default input device (usually mic).
     AUDIO_INPUT_DEVICE: Optional[Union[int, str]] = None
     # STT buffer seconds before calling Whisper (smaller = faster first transcript, more API calls)
-    STT_BUFFER_SECONDS: float = 3.0
+    STT_BUFFER_SECONDS: float = 2.0
     # Skip sending chunks with RMS below this to reduce "Thank you" hallucinations on silence (set 0 to disable)
-    STT_SILENCE_RMS_THRESHOLD: float = 100.0
+    STT_SILENCE_RMS_THRESHOLD: float = 80.0
+
+    # ── Voice Activity Detection (AudioProcessor) ──
+    # RMS energy threshold: frames below this are discarded as silence (default 150 suits 16-bit PCM)
+    VAD_ENERGY_THRESHOLD_RMS: float = 120.0
+    # Noise gate: frames with RMS below this are zeroed out to remove low-level hum
+    VAD_NOISE_GATE_RMS: float = 80.0
+    # Number of consecutive speech-positive frames required to confirm speech (at 16kHz/1024 chunk ≈ 64ms each)
+    # 3 frames ≈ 190ms of consistent speech before transcription starts
+    VAD_SPEECH_CONFIRM_FRAMES: int = 3
+    # WebRTC VAD aggressiveness: 0 (least aggressive, more false positives) to 3 (most aggressive, may clip speech)
+    VAD_AGGRESSIVENESS: int = 2
+
+    # ── STT pre-transcription audio quality checks ──
+    # Minimum dBFS level for a chunk to be sent to Whisper (-45 dBFS is very quiet)
+    STT_SILENCE_DB_THRESHOLD: float = -55.0
+    # Maximum zero-crossing rate — above this, audio is likely noise not speech (speech is typically 0.02–0.20)
+    STT_MAX_ZCR: float = 0.52
+    # Minimum peak sample amplitude in a chunk (out of 32767)
+    STT_MIN_PEAK: int = 40
 
     @field_validator("GROQ_API_KEY", mode="before")
     @classmethod

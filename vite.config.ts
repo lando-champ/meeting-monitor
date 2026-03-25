@@ -9,6 +9,14 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: false,
     },
+    // Dev: frontend at :8080, API/WebSocket on backend (set to your PORT in backend/.env, often 8001).
+    proxy: {
+      "/api": {
+        target: "http://127.0.0.1:8001",
+        changeOrigin: true,
+        ws: true,
+      },
+    },
   },
   plugins: [react()],
   resolve: {

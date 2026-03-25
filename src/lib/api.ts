@@ -2,7 +2,16 @@
  * API client for Meeting Monitor backend
  */
 
-const getBaseUrl = () => import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+/**
+ * In dev, default to same-origin so Vite can proxy `/api` (see vite.config.ts).
+ * Set VITE_API_URL when your API runs elsewhere (e.g. http://localhost:8001).
+ */
+const getBaseUrl = () => {
+  const env = import.meta.env.VITE_API_URL as string | undefined;
+  if (env && env.length > 0) return env.replace(/\/$/, "");
+  if (import.meta.env.DEV) return "";
+  return "http://localhost:8001";
+};
 
 export const apiBaseUrl = getBaseUrl();
 
@@ -79,6 +88,11 @@ export function getAuthHeaders(token: string): HeadersInit {
 
 /** WebSocket base URL for live meeting transcript (ws or wss from API host). */
 export function getWsBaseUrl(): string {
+  if (!apiBaseUrl) {
+    const proto = typeof window !== "undefined" && window.location.protocol === "https:" ? "wss" : "ws";
+    const host = typeof window !== "undefined" ? window.location.host : "localhost:8080";
+    return `${proto}://${host}`;
+  }
   const u = apiBaseUrl.replace(/^http/, "ws");
   return u.endsWith("/") ? u.slice(0, -1) : u;
 }

@@ -10,25 +10,29 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
 
-from app.audio.audio_processor import AudioProcessor
 from app.stt.stt_pipeline import STTPipeline
 
 router = APIRouter()
+
+
+async def _safe_stt_tick(meeting_id: str, pipeline: "STTPipeline") -> None:
+    try:
+        await pipeline.process_buffer()
+    except Exception:
+        logger.exception("STT process_buffer failed meeting_id=%s", meeting_id)
 
 
 class WebSocketManager:
     """Per-meeting AudioProcessor, STTPipeline; broadcast transcript to frontend subscribers."""
 
     def __init__(self):
-        self._processors: Dict[str, AudioProcessor] = {}
         self._pipelines: Dict[str, STTPipeline] = {}
         self._subscribers: Dict[str, Set[WebSocket]] = {}
 
     def ensure_pipeline(self, meeting_id: str) -> None:
         if meeting_id in self._pipelines:
             return
-        # use_vad=False so we keep buffering all audio; otherwise VAD drops silence and buffer never fills after first speech
-        self._processors[meeting_id] = AudioProcessor(use_vad=False)
+        logger.info("Audio pipeline created for meeting %s", meeting_id)
         async def push(mid: str, text: str):
             await self.broadcast_transcript(mid, text)
         self._pipelines[meeting_id] = STTPipeline(
@@ -39,13 +43,13 @@ class WebSocketManager:
     async def process_audio(self, meeting_id: str, data: bytes) -> None:
         """Process PCM from bot: processor → pipeline buffer → maybe transcribe and broadcast."""
         self.ensure_pipeline(meeting_id)
-        proc = self._processors[meeting_id]
         pipeline = self._pipelines[meeting_id]
-        chunk = proc.process_audio_frame(data)
-        if chunk:
-            pipeline.process_audio(chunk)
-            # Run transcription in background so we don't block receiving more audio (avoids backlog/timeout)
-            asyncio.create_task(pipeline.process_buffer())
+        if not data:
+            return
+        # Feed raw PCM directly into STT buffer. This avoids hard-dependence on
+        # upstream frame gating and keeps transcription alive even when VAD tuning changes.
+        pipeline.process_audio(data)
+        asyncio.create_task(_safe_stt_tick(meeting_id, pipeline))
 
     def subscribe(self, meeting_id: str, ws: WebSocket) -> None:
         if meeting_id not in self._subscribers:
@@ -67,7 +71,6 @@ class WebSocketManager:
             self.unsubscribe(meeting_id, ws)
 
     def remove_meeting(self, meeting_id: str) -> None:
-        self._processors.pop(meeting_id, None)
         self._pipelines.pop(meeting_id, None)
         self._subscribers.pop(meeting_id, None)
 
@@ -80,9 +83,23 @@ async def websocket_audio(websocket: WebSocket, meeting_id: str):
     """Bot sends raw PCM here. We process and STT; transcript is broadcast to /ws/meeting/{id}/live."""
     await websocket.accept()
     logger.info("Bot audio WebSocket connected for meeting_id=%s", meeting_id)
+    rx_count = 0
     try:
         while True:
-            data = await websocket.receive_bytes()
+            message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                break
+            data = message.get("bytes")
+            if not data:
+                continue
+            rx_count += 1
+            if rx_count == 1 or rx_count % 500 == 0:
+                logger.info(
+                    "Audio RX meeting_id=%s chunks=%d last_bytes=%d",
+                    meeting_id,
+                    rx_count,
+                    len(data),
+                )
             await ws_manager.process_audio(meeting_id, data)
     except WebSocketDisconnect:
         logger.debug("Bot audio WebSocket disconnected for meeting_id=%s", meeting_id)

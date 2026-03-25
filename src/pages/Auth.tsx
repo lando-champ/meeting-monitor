@@ -17,7 +17,7 @@ const Auth = () => {
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    navigate('/business/manager/workspaces', { replace: true });
+    navigate('/business', { replace: true });
   }, [isAuthenticated, navigate]);
 
   if (isAuthenticated) return null;
