@@ -38,13 +38,13 @@ def summarize_and_extract(transcript: str) -> Tuple[dict, List[str]]:
         )
 
     client = get_groq_client()
-    prompt = """You are a meeting assistant. Given the following meeting transcript, output a JSON object with exactly these keys (no other keys):
-- "overview": one short paragraph summarizing the meeting.
-- "key_points": array of strings (main points discussed).
-- "decisions": array of strings (decisions made).
-- "action_items": array of strings (concrete action items or tasks to do).
+    prompt = """You are a precise meeting assistant. Read the full transcript carefully. Output a JSON object with exactly these keys (no other keys):
+- "overview": a thorough narrative summary in several paragraphs (typically 3–6). Cover: meeting purpose and context; each major topic or agenda thread in order; important facts, figures, risks, and constraints mentioned; how discussions concluded or what was left open. Do not omit substantive topics—if the meeting was long, the overview should reflect that depth. Use clear prose, not bullet points inside this field.
+- "key_points": array of strings. List every significant takeaway: one string per distinct idea, topic, concern, proposal, or insight that mattered for attendees. Aim for comprehensive coverage (often 10–25 items for hour-long meetings; fewer only if the meeting was very short). Merge duplicates; do not skip whole themes because of length.
+- "decisions": array of strings. Each finalized decision, approval, rejection, or explicit agreement. If none, use an empty array.
+- "action_items": array of strings. Concrete next steps with owner or deadline when stated in the transcript (e.g. "Alice to send the draft by Friday"). Do not invent owners or dates not implied by the transcript.
 
-Output only valid JSON, no markdown or extra text."""
+Rules: Stay faithful to the transcript. Output only valid JSON, no markdown fences or extra text."""
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[
@@ -52,6 +52,7 @@ Output only valid JSON, no markdown or extra text."""
             {"role": "user", "content": f"Transcript:\n\n{text_in[:MAX_TRANSCRIPT_CHARS]}"},
         ],
         temperature=0.2,
+        max_tokens=8192,
     )
     raw = (response.choices[0].message.content or "{}").strip()
     if raw.startswith("```"):

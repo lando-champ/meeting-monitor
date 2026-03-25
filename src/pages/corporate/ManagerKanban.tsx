@@ -371,7 +371,7 @@ const ManagerKanban = () => {
         {/* Page Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Kairox Kanban Board</h1>
+            <h1 className="text-2xl font-bold">Kanban Board</h1>
             <p className="text-muted-foreground">
               To Do · In Progress · In Review · Done · Blockers. Extract tasks from meeting transcripts.
             </p>
