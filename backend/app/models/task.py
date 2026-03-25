@@ -21,6 +21,8 @@ class TaskBase(BaseModel):
     status: TaskStatusLiteral = "todo"
     priority: Literal["low", "medium", "high", "urgent"] = "medium"
     assignee_id: Optional[str] = None  # owner / assignee user id
+    assignee_name: Optional[str] = None  # display / transcript name when id unknown
+    assigned_at: Optional[datetime] = None  # when the assignment was recorded (meeting end or manual)
     due_date: Optional[datetime] = None
     source_meeting_id: Optional[str] = None
     subtasks: Optional[List[str]] = None  # list of sub-item strings
@@ -36,6 +38,7 @@ class TaskCreateBody(BaseModel):
     status: TaskStatusLiteral = "todo"
     priority: Literal["low", "medium", "high", "urgent"] = "medium"
     assignee_id: Optional[str] = None
+    assignee_name: Optional[str] = None
     due_date: Optional[datetime] = None
     subtasks: Optional[List[str]] = None
 
@@ -50,6 +53,8 @@ class TaskUpdate(BaseModel):
     status: Optional[TaskStatusLiteral] = None
     priority: Optional[Literal["low", "medium", "high", "urgent"]] = None
     assignee_id: Optional[str] = None
+    assignee_name: Optional[str] = None
+    assigned_at: Optional[datetime] = None
     due_date: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     subtasks: Optional[List[str]] = None

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime
 from typing import Any, List, Optional, Tuple
 
@@ -25,6 +26,97 @@ def get_groq_client() -> Groq:
     return Groq(api_key=settings.GROQ_API_KEY)
 
 
+def _strip_code_fences(raw: str) -> str:
+    txt = (raw or "").strip()
+    if txt.startswith("```"):
+        lines = txt.split("\n")
+        txt = "\n".join(lines[1:-1] if lines and lines[-1].strip() == "```" else lines[1:])
+    return txt.strip()
+
+
+def _extract_first_json_object(raw: str) -> str:
+    """Best-effort extraction of the first balanced JSON object."""
+    s = _strip_code_fences(raw)
+    start = s.find("{")
+    if start < 0:
+        return s
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(s)):
+        ch = s[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return s[start : i + 1]
+    return s[start:]
+
+
+def _repair_common_json_issues(raw: str) -> str:
+    """Repair common LLM JSON mistakes (trailing commas/quotes)."""
+    s = _extract_first_json_object(raw)
+    # Replace smart quotes with plain quotes
+    s = s.replace("“", '"').replace("”", '"').replace("’", "'")
+    # Remove trailing commas before } or ]
+    s = re.sub(r",\s*([}\]])", r"\1", s)
+    return s.strip()
+
+
+def _parse_model_json(raw: str) -> dict:
+    candidates = [
+        _strip_code_fences(raw),
+        _extract_first_json_object(raw),
+        _repair_common_json_issues(raw),
+    ]
+    last_err: Optional[Exception] = None
+    for c in candidates:
+        try:
+            parsed = json.loads(c)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception as e:
+            last_err = e
+    if last_err:
+        raise last_err
+    raise json.JSONDecodeError("Invalid JSON", raw or "", 0)
+
+
+def _repair_summary_json_with_llm(client: Groq, broken_output: str) -> dict:
+    """Second pass: convert model output into strict JSON with the expected keys."""
+    repair_sys = """You fix malformed model output. The user message contains text that was meant to be one JSON object with keys:
+overview (string), key_points (array of strings), decisions (array of strings), action_items (array of strings).
+
+Rules:
+- Output ONLY one JSON object, no markdown, no code fences, no commentary.
+- overview must be ONE JSON string. Put paragraph breaks inside the string as \\n (backslash-n). Do not put raw line breaks after "overview": without quotes.
+- All string values must use double quotes. Escape internal double quotes as \\".
+- Copy faithfully from the broken text; do not invent meeting content."""
+    resp = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": repair_sys},
+            {"role": "user", "content": f"Broken output to fix:\n\n{broken_output[:100_000]}"},
+        ],
+        temperature=0.0,
+        max_tokens=8192,
+        response_format={"type": "json_object"},
+    )
+    fixed = (resp.choices[0].message.content or "{}").strip()
+    return _parse_model_json(fixed)
+
+
 def summarize_and_extract(transcript: str) -> Tuple[dict, List[str]]:
     """
     One chat completion: overview, key_points, decisions, action_items.
@@ -38,14 +130,19 @@ def summarize_and_extract(transcript: str) -> Tuple[dict, List[str]]:
         )
 
     client = get_groq_client()
-    prompt = """You are a precise meeting assistant. Read the full transcript carefully. Output a JSON object with exactly these keys (no other keys):
-- "overview": a thorough narrative summary in several paragraphs (typically 3–6). Cover: meeting purpose and context; each major topic or agenda thread in order; important facts, figures, risks, and constraints mentioned; how discussions concluded or what was left open. Do not omit substantive topics—if the meeting was long, the overview should reflect that depth. Use clear prose, not bullet points inside this field.
-- "key_points": array of strings. List every significant takeaway: one string per distinct idea, topic, concern, proposal, or insight that mattered for attendees. Aim for comprehensive coverage (often 10–25 items for hour-long meetings; fewer only if the meeting was very short). Merge duplicates; do not skip whole themes because of length.
-- "decisions": array of strings. Each finalized decision, approval, rejection, or explicit agreement. If none, use an empty array.
-- "action_items": array of strings. Concrete next steps with owner or deadline when stated in the transcript (e.g. "Alice to send the draft by Friday"). Do not invent owners or dates not implied by the transcript.
+    prompt = """You are a precise meeting assistant. Read the full transcript. You MUST respond with one JSON object only (no markdown, no ``` fences).
 
-Rules: Stay faithful to the transcript. Output only valid JSON, no markdown fences or extra text."""
-    response = client.chat.completions.create(
+Required shape (example structure only — replace values from the transcript):
+{"overview":"<single JSON string: 3-6 paragraphs of narrative summary; use \\n between paragraphs inside this string>","key_points":["..."],"decisions":["..."],"action_items":["..."]}
+
+Field rules:
+- "overview": ONE string value in double quotes. Never write unquoted text after the colon. For new paragraphs inside overview use \\n inside the same string — not raw line breaks.
+- "key_points": array of strings — substantive takeaways (often 10–25 for long meetings).
+- "decisions": array of strings — finalized agreements; [] if none.
+- "action_items": array of strings — concrete next steps; do not invent owners/dates absent from transcript.
+
+Stay faithful to the transcript. Valid JSON only."""
+    create_kwargs = dict(
         model="llama-3.3-70b-versatile",
         messages=[
             {"role": "system", "content": prompt},
@@ -53,16 +150,34 @@ Rules: Stay faithful to the transcript. Output only valid JSON, no markdown fenc
         ],
         temperature=0.2,
         max_tokens=8192,
+        response_format={"type": "json_object"},
     )
-    raw = (response.choices[0].message.content or "{}").strip()
-    if raw.startswith("```"):
-        lines = raw.split("\n")
-        raw = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
     try:
-        data = json.loads(raw)
+        response = client.chat.completions.create(**create_kwargs)
+    except Exception as e:
+        logger.warning("Groq call without response_format failed or unsupported: %s — retrying without json_object", e)
+        create_kwargs.pop("response_format", None)
+        response = client.chat.completions.create(**create_kwargs)
+
+    raw = (response.choices[0].message.content or "{}").strip()
+    try:
+        data = _parse_model_json(raw)
     except json.JSONDecodeError as e:
-        logger.exception("Groq returned invalid JSON for summarize_and_extract: %s", e)
-        raise
+        logger.warning(
+            "summarize_and_extract primary parse failed: %s — running JSON repair pass. raw_prefix=%r",
+            e,
+            raw[:240],
+        )
+        try:
+            data = _repair_summary_json_with_llm(client, raw)
+        except Exception as e2:
+            logger.exception(
+                "Groq summarize repair failed: %s (original: %s) raw_prefix=%r",
+                e2,
+                e,
+                raw[:240],
+            )
+            raise e2 from e
 
     overview = data.get("overview") or ""
     key_points = data.get("key_points")

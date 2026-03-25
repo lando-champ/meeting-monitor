@@ -1,6 +1,9 @@
 import { ReactNode } from 'react';
+import { useParams } from 'react-router-dom';
 import Sidebar, { SidebarItem } from './Sidebar';
 import TopBar from './TopBar';
+import { useAuth } from '@/context/AuthContext';
+import WorkspaceCopilot from '@/components/workspace/WorkspaceCopilot';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -8,6 +11,15 @@ interface DashboardLayoutProps {
   sidebarTitle: string;
   sidebarSubtitle?: string;
   showMeetingStatus?: boolean;
+}
+
+function WorkspaceCopilotHost() {
+  const { workspaceId, meetingId } = useParams();
+  const { token } = useAuth();
+  if (!workspaceId) return null;
+  return (
+    <WorkspaceCopilot token={token} workspaceId={workspaceId} meetingId={meetingId} />
+  );
 }
 
 const DashboardLayout = ({
@@ -30,6 +42,7 @@ const DashboardLayout = ({
           {children}
         </main>
       </div>
+      <WorkspaceCopilotHost />
     </div>
   );
 };

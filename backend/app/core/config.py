@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     
     # Groq API (for Whisper transcription). Get a key at https://console.groq.com
     GROQ_API_KEY: str = ""
+    TASK_AUTOMATION_PROVIDER: str = "groq"  # groq | gemini
+    TASK_AUTOMATION_MODEL: str = "llama-3.3-70b-versatile"
+    TASK_AUTOMATION_MATCH_THRESHOLD: float = 0.78
+    TASK_AUTOMATION_LOW_CONFIDENCE_THRESHOLD: float = 0.60
     
     # CORS - accept list or comma-separated / JSON string from env
     CORS_ORIGINS: List[str] = [

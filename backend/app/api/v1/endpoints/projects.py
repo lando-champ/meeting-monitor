@@ -7,8 +7,10 @@ from app.core.dependencies import get_current_user, verify_project_membership, v
 from app.models.project import Project, ProjectCreate, ProjectOut, ProjectDetail, MemberInfo
 from app.models.task import Task, TaskCreate, TaskUpdate, TaskCreateBody
 from app.models.user import User
-from app.api.v1.endpoints.tasks import _task_doc_to_model, _normalize_status
+from app.api.v1.endpoints.tasks import _task_doc_to_model, _normalize_status, apply_assignee_change_timestamp
 from bson import ObjectId
+from app.services.kanban_agentic_automation import rebuild_kanban_from_meeting_history
+from app.services.workspace_copilot import run_workspace_copilot
 
 router = APIRouter()
 
@@ -76,7 +78,18 @@ async def get_project(
     """Get project by ID with member details and Kairox board tasks."""
     db = await get_database()
     project_out = await _project_to_out(db, {**project, "_id": project["_id"]})
-    task_docs = await db.tasks.find({"project_id": project_id}).sort("created_at", -1).to_list(length=500)
+    meetings = await db.meetings.find({"project_id": project_id}, {"_id": 1}).to_list(length=5000)
+    valid_meeting_ids = [str(m["_id"]) for m in meetings]
+    task_filter: dict = {"project_id": project_id, "is_auto_generated": True}
+    if valid_meeting_ids:
+        task_filter["$or"] = [
+            {"source_meeting_id": {"$in": valid_meeting_ids}},
+            {"synced_from_meeting_ids": {"$in": valid_meeting_ids}},
+            {"copilot_created": True},
+        ]
+    else:
+        task_filter["$or"] = [{"copilot_created": True}]
+    task_docs = await db.tasks.find(task_filter).sort("created_at", -1).to_list(length=500)
     tasks = [_task_doc_to_model(t) for t in task_docs]
     return ProjectDetail(**project_out.model_dump(), tasks=tasks)
 
@@ -88,17 +101,11 @@ async def create_project_task(
     project: dict = Depends(verify_project_membership),
     current_user: User = Depends(get_current_user),
 ):
-    """Create a task in the project (Kairox board)."""
-    db = await get_database()
-    task_dict = body.model_dump()
-    task_dict["project_id"] = project_id
-    task_dict["status"] = _normalize_status(task_dict.get("status"))
-    task_dict["is_auto_generated"] = False
-    task_dict["created_at"] = datetime.utcnow()
-    task_dict["updated_at"] = datetime.utcnow()
-    result = await db.tasks.insert_one(task_dict)
-    task_dict["id"] = str(result.inserted_id)
-    return _task_doc_to_model({**task_dict, "_id": result.inserted_id})
+    """Manual create disabled: tasks are derived from meeting history only."""
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Manual task creation is disabled. Tasks are generated from meeting transcripts.",
+    )
 
 
 @router.put("/{project_id}/tasks/{task_id}", response_model=Task)
@@ -123,6 +130,7 @@ async def update_project_task(
         update_data["status"] = _normalize_status(update_data["status"])
     if update_data.get("status") == "done" and not update_data.get("completed_at"):
         update_data["completed_at"] = datetime.utcnow()
+    apply_assignee_change_timestamp(task, update_data)
     update_data["updated_at"] = datetime.utcnow()
     await db.tasks.update_one({"_id": oid}, {"$set": update_data})
     updated = await db.tasks.find_one({"_id": oid})
@@ -135,10 +143,39 @@ async def extract_project_tasks(
     project: dict = Depends(verify_project_membership),
     current_user: User = Depends(get_current_user),
 ):
-    """Sync Kanban tasks from stored meeting action_items (no LLM)."""
-    from app.services.project_task_extractor import sync_tasks_to_kairox
-    await sync_tasks_to_kairox(project_id)
-    return {"message": "Tasks extracted and synced", "project_id": project_id}
+    """Rebuild Kanban tasks from meeting history using agentic automation."""
+    result = await rebuild_kanban_from_meeting_history(project_id)
+    return {"message": "Kanban rebuilt from meeting history", "project_id": project_id, "result": result}
+
+
+@router.post("/{project_id}/copilot/chat", status_code=status.HTTP_200_OK)
+async def workspace_copilot_chat(
+    project_id: str,
+    body: dict = Body(...),
+    project: dict = Depends(verify_project_membership),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Workspace copilot: answers questions using meetings/tasks/members context and can run actions
+    (create meeting, create task with assignee resolution, update task, sync Kanban).
+    """
+    message = (body.get("message") or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="message is required")
+    meeting_id = body.get("meeting_id")
+    meeting_id_s = str(meeting_id).strip() if meeting_id else None
+    db = await get_database()
+    if meeting_id_s:
+        try:
+            mid_oid = ObjectId(meeting_id_s)
+        except Exception:
+            meeting_id_s = None
+        else:
+            mdoc = await db.meetings.find_one({"_id": mid_oid})
+            if not mdoc or str(mdoc.get("project_id") or "") != project_id:
+                meeting_id_s = None
+    answer, actions = await run_workspace_copilot(db, project_id, message, meeting_id=meeting_id_s)
+    return {"answer": answer, "actions_executed": actions, "project_id": project_id}
 
 
 @router.post("/join/{invite_code}", response_model=ProjectOut)

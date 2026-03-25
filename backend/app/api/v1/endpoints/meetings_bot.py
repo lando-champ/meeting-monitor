@@ -1,7 +1,7 @@
 """
 Meeting bot API: start/stop meeting, participant join/leave, get meeting (transcripts, attendance, summary, action items).
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
@@ -13,10 +13,17 @@ from app.models.user import User
 from app.attendance import AttendanceTracker
 from app.api.v1.endpoints.meeting_bot_ws import ws_manager
 from app.services.meetings_ops import run_meeting_intelligence
+from app.services.kanban_agentic_automation import rebuild_kanban_from_meeting_history
+from app.services.meeting_context_qa import answer_meeting_question, _build_transcript_text
 
 router = APIRouter()
 
 _bot_manager = None
+
+
+def _meeting_now() -> datetime:
+    """Store naive UTC for Mongo (consistent wall times when clients interpret as UTC)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def set_bot_manager(manager):
@@ -171,6 +178,56 @@ async def get_meeting(
     }
 
 
+@router.post("/{meeting_id}/ask", status_code=status.HTTP_200_OK)
+async def ask_about_meeting(
+    meeting_id: str,
+    body: Optional[dict] = Body(None),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Ask a question about what happened in this meeting (transcript + summary context via Groq).
+    """
+    question = ((body or {}).get("question") or "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="question is required")
+    db = await get_database()
+    try:
+        oid = ObjectId(meeting_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid meeting ID")
+    meeting = await db.meetings.find_one({"_id": oid})
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    if meeting.get("project_id"):
+        await verify_project_membership(meeting["project_id"], current_user)
+
+    segments = await db.transcript_segments.find({"meeting_id": meeting_id}).sort("timestamp", 1).to_list(length=5000)
+    transcript_text = _build_transcript_text(segments)
+    summary_doc = await db.summaries.find_one({"meeting_id": meeting_id}, sort=[("created_at", -1)])
+    action_docs = await db.action_items.find({"meeting_id": meeting_id}).sort("created_at", 1).to_list(length=200)
+    summary_text = (summary_doc or {}).get("summary_text")
+    key_points = (summary_doc or {}).get("key_points") or []
+    if isinstance(key_points, str):
+        key_points = [key_points]
+    action_texts = [a.get("text") for a in action_docs if a.get("text")]
+
+    try:
+        answer = answer_meeting_question(
+            meeting_title=(meeting.get("title") or "") or "",
+            transcript_text=transcript_text,
+            summary_text=summary_text,
+            key_points=key_points if isinstance(key_points, list) else [],
+            action_items=action_texts,
+            question=question,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=502, detail="Assistant failed to respond")
+
+    return {"answer": answer, "meeting_id": meeting_id}
+
+
 @router.post("/{meeting_id}/start", status_code=status.HTTP_200_OK)
 async def start_meeting(
     meeting_id: str,
@@ -191,14 +248,15 @@ async def start_meeting(
             "title": body.get("title", "Meeting"),
             "status": "live",
             "meeting_url": body.get("meeting_url"),
-            "started_at": datetime.utcnow(),
+            "started_at": _meeting_now(),
             "ended_at": None,
         })
     else:
-        await db.meetings.update_one(
-            {"_id": oid},
-            {"$set": {"status": "live", "started_at": datetime.utcnow(), "ended_at": None}},
-        )
+        # Preserve first start time so restarts / reconnects do not shift "held at" timestamps.
+        patch: dict = {"status": "live", "ended_at": None}
+        if not meeting.get("started_at"):
+            patch["started_at"] = _meeting_now()
+        await db.meetings.update_one({"_id": oid}, {"$set": patch})
     meeting_url = body.get("meeting_url") or (meeting or {}).get("meeting_url")
     if not meeting_url:
         raise HTTPException(status_code=400, detail="meeting_url required to start bot")
@@ -212,7 +270,7 @@ async def stop_meeting(
     meeting_id: str,
     current_user: User = Depends(get_current_active_user),
 ):
-    """Stop bot, end meeting, one Groq pass for summary + action items; sync Kanban from action_items if project linked."""
+    """Stop bot, end meeting, generate intelligence, then rebuild Kanban from meeting history."""
     db = await get_database()
     try:
         oid = ObjectId(meeting_id)
@@ -225,7 +283,7 @@ async def stop_meeting(
     ws_manager.remove_meeting(meeting_id)
     await db.meetings.update_one(
         {"_id": oid},
-        {"$set": {"status": "ended", "ended_at": datetime.utcnow()}},
+        {"$set": {"status": "ended", "ended_at": _meeting_now()}},
     )
     await run_meeting_intelligence(meeting_id, language="en", project_id=project_id, sync_kanban=True)
     return {"message": "Meeting stopped", "meeting_id": meeting_id}
@@ -283,4 +341,6 @@ async def delete_meeting(
     await db.summaries.delete_many({"meeting_id": meeting_id})
     await db.action_items.delete_many({"meeting_id": meeting_id})
     await db.meetings.delete_one({"_id": oid})
+    if meeting.get("project_id"):
+        await rebuild_kanban_from_meeting_history(meeting["project_id"], trigger_meeting_id=meeting_id)
     return {"message": "Meeting deleted", "meeting_id": meeting_id}

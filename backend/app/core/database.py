@@ -65,6 +65,16 @@ async def create_indexes():
     await ensure_index(database.tasks, "status")
     await ensure_index(database.tasks, "source_meeting_id")
     await ensure_index(database.tasks, [("project_id", 1), ("status", 1)])
+    await ensure_index(database.tasks, [("project_id", 1), ("is_auto_generated", 1), ("source_meeting_id", 1)])
+    await ensure_index(database.tasks, "synced_from_meeting_ids")
+
+    # Kanban automation logs/review queues
+    await ensure_index(database.kanban_automation_runs, "project_id")
+    await ensure_index(database.kanban_automation_runs, "meeting_id")
+    await ensure_index(database.kanban_task_review_queue, "project_id")
+    await ensure_index(database.kanban_task_review_queue, "meeting_id")
+    await ensure_index(database.kanban_task_activity, "task_id")
+    await ensure_index(database.kanban_task_activity, "project_id")
 
     # Documents collection indexes (for team member documents)
     await ensure_index(database.documents, "workspace_id")

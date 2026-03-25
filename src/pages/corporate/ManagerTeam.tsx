@@ -1,16 +1,17 @@
-import { 
-  LayoutDashboard, 
-  Calendar, 
-  ListTodo, 
-  LayoutGrid, 
-  Users, 
-  BarChart3, 
+import {
+  LayoutDashboard,
+  Calendar,
+  ListTodo,
+  LayoutGrid,
+  Users,
+  BarChart3,
   Settings,
   Plus,
   Mail,
   MoreHorizontal,
   TrendingUp,
-  TrendingDown
+  TrendingDown,
+  Minus,
 } from 'lucide-react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { SidebarItem } from '@/components/layout/Sidebar';
@@ -35,7 +36,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,12 +44,34 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { TeamMember } from '@/lib/types';
+import { getProject, type ApiTask } from '@/lib/api';
+import { useToast } from '@/hooks/use-toast';
+
+function memberTaskStats(memberId: string, memberName: string, tasks: ApiTask[]) {
+  const norm = (s: string | undefined | null) => (s || '').trim().toLowerCase();
+  const nameL = norm(memberName);
+  const mine = tasks.filter((t) => {
+    if (t.assignee_id && t.assignee_id === memberId) return true;
+    if (nameL && t.assignee_name && norm(t.assignee_name) === nameL) return true;
+    return false;
+  });
+  const total = mine.length;
+  const completed = mine.filter((t) => t.status === 'done').length;
+  return {
+    tasksCompleted: completed,
+    totalTasks: total,
+    productivityScore: total > 0 ? Math.round((completed / total) * 100) : 0,
+  };
+}
 
 const ManagerTeam = () => {
   const { workspaceId = "alpha" } = useParams();
   const basePath = `/business/manager/workspaces/${workspaceId}`;
   const { currentWorkspace, addMemberToWorkspace, refreshWorkspaces } = useWorkspace();
-  const { user } = useAuth();
+  const { token } = useAuth();
+  const { toast } = useToast();
+  const [tasks, setTasks] = useState<ApiTask[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
   type EditableMember = TeamMember & { designation?: string };
   const [newMember, setNewMember] = useState("");
   const [error, setError] = useState("");
@@ -68,25 +91,66 @@ const ManagerTeam = () => {
     return value.length >= 3;
   }, [newMember]);
 
+  const loadTasks = useCallback(async () => {
+    if (!token || !workspaceId) {
+      setTasks([]);
+      return;
+    }
+    setTasksLoading(true);
+    try {
+      const project = await getProject(token, workspaceId);
+      setTasks(project.tasks ?? []);
+    } catch {
+      setTasks([]);
+    } finally {
+      setTasksLoading(false);
+    }
+  }, [token, workspaceId]);
+
   const teamMembers: EditableMember[] = useMemo(() => {
     const details = currentWorkspace?.memberDetails ?? [];
     const ownerId = currentWorkspace?.ownerId;
-    return details.map((m) => ({
-      id: m.id,
-      name: m.name,
-      email: m.email,
-      avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(m.name)}`,
-      role: m.id === ownerId ? "Owner" : "Member",
-      status: "active" as const,
-      productivityScore: 0,
-      tasksCompleted: 0,
-      totalTasks: 0,
-    }));
-  }, [currentWorkspace?.memberDetails, currentWorkspace?.ownerId]);
+    return details.map((m) => {
+      const st = memberTaskStats(m.id, m.name, tasks);
+      return {
+        id: m.id,
+        name: m.name,
+        email: m.email,
+        avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(m.name)}`,
+        role: m.id === ownerId ? 'Owner' : 'Member',
+        status: 'active' as const,
+        productivityScore: st.productivityScore,
+        tasksCompleted: st.tasksCompleted,
+        totalTasks: st.totalTasks,
+      };
+    });
+  }, [currentWorkspace?.memberDetails, currentWorkspace?.ownerId, tasks]);
+
+  const teamWideDone = useMemo(
+    () => tasks.filter((t) => t.status === 'done').length,
+    [tasks],
+  );
+  const teamWideTotal = tasks.length;
+  const teamWidePct =
+    teamWideTotal > 0 ? Math.round((teamWideDone / teamWideTotal) * 100) : 0;
+  const memberScoresWithTasks = teamMembers.filter((m) => m.totalTasks > 0).map((m) => m.productivityScore);
+  const avgProductivity =
+    memberScoresWithTasks.length > 0
+      ? Math.round(memberScoresWithTasks.reduce((a, b) => a + b, 0) / memberScoresWithTasks.length)
+      : teamWidePct;
+  const weekMs = 7 * 86400000;
+  const tasksThisWeek = tasks.filter((t) => {
+    const u = t.updated_at ? new Date(t.updated_at).getTime() : 0;
+    return u > 0 && Date.now() - u <= weekMs;
+  }).length;
 
   useEffect(() => {
     refreshWorkspaces();
   }, [workspaceId, refreshWorkspaces]);
+
+  useEffect(() => {
+    void loadTasks();
+  }, [loadTasks]);
 
   const managerSidebarItems: SidebarItem[] = [
     { title: 'Dashboard', href: `${basePath}/dashboard`, icon: LayoutDashboard },
@@ -116,7 +180,7 @@ const ManagerTeam = () => {
           <div>
             <h1 className="text-2xl font-bold">Team</h1>
             <p className="text-muted-foreground">
-              Manage your team members and view their productivity
+              Manage workspace members. Productivity is based on Kanban tasks assigned to each person.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -202,20 +266,8 @@ const ManagerTeam = () => {
                       }
                       const normalized = newMember.trim().toLowerCase();
                       addMemberToWorkspace(currentWorkspace.id, normalized);
-                      setTeamMembers((prev) => [
-                        {
-                          id: `member-${Date.now()}`,
-                          name: normalized.split("@")[0] ?? normalized,
-                          email: normalized,
-                          avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${normalized}`,
-                          role: "New Member",
-                          status: "active",
-                          productivityScore: 0,
-                          tasksCompleted: 0,
-                          totalTasks: 0,
-                        },
-                        ...prev,
-                      ]);
+                      void refreshWorkspaces();
+                      void loadTasks();
                       setNewMember("");
                     }}
                   >
@@ -281,8 +333,10 @@ const ManagerTeam = () => {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-2xl font-bold">87%</p>
-                  <p className="text-sm text-muted-foreground">Avg Productivity</p>
+                  <p className="text-2xl font-bold">
+                    {tasksLoading ? '…' : `${avgProductivity}%`}
+                  </p>
+                  <p className="text-sm text-muted-foreground">Avg completion (assigned tasks)</p>
                 </div>
                 <TrendingUp className="h-8 w-8 text-success/20" />
               </div>
@@ -292,8 +346,8 @@ const ManagerTeam = () => {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-2xl font-bold">24</p>
-                  <p className="text-sm text-muted-foreground">Tasks This Week</p>
+                  <p className="text-2xl font-bold">{tasksLoading ? '…' : tasksThisWeek}</p>
+                  <p className="text-sm text-muted-foreground">Tasks touched (7d)</p>
                 </div>
                 <ListTodo className="h-8 w-8 text-primary/20" />
               </div>
@@ -353,23 +407,34 @@ const ManagerTeam = () => {
                 <div className="space-y-3">
                   <div>
                     <div className="flex items-center justify-between text-sm mb-1">
-                      <span className="text-muted-foreground">Productivity</span>
+                      <span className="text-muted-foreground">Task completion</span>
                       <span className="font-medium flex items-center gap-1">
-                        {member.productivityScore}%
-                        {member.productivityScore >= 80 ? (
-                          <TrendingUp className="h-3 w-3 text-success" />
+                        {member.totalTasks === 0 ? (
+                          <span className="text-muted-foreground font-normal">No tasks assigned</span>
                         ) : (
-                          <TrendingDown className="h-3 w-3 text-destructive" />
+                          <>
+                            {member.productivityScore}%
+                            {member.productivityScore >= 80 ? (
+                              <TrendingUp className="h-3 w-3 text-success" />
+                            ) : member.productivityScore >= 40 ? (
+                              <Minus className="h-3 w-3 text-muted-foreground" />
+                            ) : (
+                              <TrendingDown className="h-3 w-3 text-destructive" />
+                            )}
+                          </>
                         )}
                       </span>
                     </div>
-                    <Progress value={member.productivityScore} className="h-2" />
+                    <Progress
+                      value={member.totalTasks === 0 ? 0 : member.productivityScore}
+                      className="h-2"
+                    />
                   </div>
 
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Tasks</span>
                     <span className="font-medium">
-                      {member.tasksCompleted}/{member.totalTasks} completed
+                      {member.tasksCompleted}/{member.totalTasks} done
                     </span>
                   </div>
 
@@ -427,25 +492,14 @@ const ManagerTeam = () => {
             <Button
               variant="secondary"
               onClick={() => {
-                if (!selectedMember) {
-                  return;
-                }
-                setTeamMembers((prev) =>
-                  prev.map((member) =>
-                    member.id === selectedMember.id
-                          ? {
-                              ...member,
-                              name: editName.trim() || member.name,
-                              role: editRole.trim() || member.role,
-                              designation: editDesignation.trim() || member.designation,
-                            }
-                      : member,
-                  ),
-                );
+                toast({
+                  title: 'Member profiles',
+                  description: 'Names and roles come from user accounts. Invite or remove members from this workspace instead.',
+                });
                 setEditOpen(false);
               }}
             >
-              Save Changes
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

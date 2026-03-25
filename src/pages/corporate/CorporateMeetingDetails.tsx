@@ -1,9 +1,7 @@
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
-  Users,
   CheckSquare,
-  Sparkles,
   MessageSquare,
   ExternalLink,
   Bot,

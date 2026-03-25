@@ -193,6 +193,30 @@ export async function generateMeetingSummary(
   return res.json();
 }
 
+/** Ask the meeting assistant (Groq) about transcript + summary context. */
+export async function askMeetingQuestion(
+  token: string,
+  meetingId: string,
+  question: string
+): Promise<{ answer: string; meeting_id: string }> {
+  const res = await fetch(`${apiBaseUrl}/api/v1/meetings/${encodeURIComponent(meetingId)}/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders(token) },
+    body: JSON.stringify({ question: question.trim() }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg =
+      typeof err.detail === "string"
+        ? err.detail
+        : Array.isArray(err.detail)
+          ? err.detail.map((e: { msg?: string }) => e.msg).join(", ")
+          : "Assistant unavailable";
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
 export interface MeetingBotListItem {
   id: string;
   project_id?: string;
@@ -281,6 +305,8 @@ export interface ApiTask {
   status: "todo" | "in_progress" | "in_review" | "done" | "blockers";
   priority: "low" | "medium" | "high" | "urgent";
   assignee_id: string | null;
+  assignee_name?: string | null;
+  assigned_at?: string | null;
   due_date: string | null;
   subtasks: string[] | null;
   source_meeting_id: string | null;
@@ -299,6 +325,37 @@ export async function getProject(token: string, projectId: string): Promise<ApiP
     headers: getAuthHeaders(token),
   });
   if (!res.ok) throw new Error("Failed to load project");
+  return res.json();
+}
+
+/** Workspace copilot: Q&A + actions (create meeting/task, update task, sync Kanban). */
+export async function postWorkspaceCopilotChat(
+  token: string,
+  projectId: string,
+  message: string,
+  meetingId?: string | null
+): Promise<{ answer: string; actions_executed: unknown[]; project_id: string }> {
+  const res = await fetch(
+    `${apiBaseUrl}/api/v1/projects/${encodeURIComponent(projectId)}/copilot/chat`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders(token) },
+      body: JSON.stringify({
+        message: message.trim(),
+        ...(meetingId ? { meeting_id: meetingId } : {}),
+      }),
+    }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg =
+      typeof err.detail === "string"
+        ? err.detail
+        : Array.isArray(err.detail)
+          ? err.detail.map((e: { msg?: string }) => e.msg).join(", ")
+          : "Copilot request failed";
+    throw new Error(msg);
+  }
   return res.json();
 }
 
@@ -337,6 +394,8 @@ export async function updateProjectTask(
     status: ApiTask["status"];
     priority: ApiTask["priority"];
     assignee_id: string | null;
+    assignee_name: string | null;
+    assigned_at: string | null;
     due_date: string | null;
     subtasks: string[] | null;
   }>

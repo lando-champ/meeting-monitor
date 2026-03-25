@@ -21,28 +21,35 @@ def _task_doc_to_model(d: dict) -> Task:
     d = dict(d)
     d["id"] = str(d.pop("_id", d.get("id", "")))
     d["status"] = _normalize_status(d.get("status"))
+    d.pop("copilot_created", None)
     return Task(**{k: v for k, v in d.items() if k != "_id"})
+
+
+def apply_assignee_change_timestamp(task: dict, update_data: dict) -> None:
+    """If assignee fields change and caller did not set assigned_at, set assigned_at to now."""
+    if "assigned_at" in update_data:
+        return
+    changed = False
+    if "assignee_id" in update_data and update_data.get("assignee_id") != task.get("assignee_id"):
+        changed = True
+    if "assignee_name" in update_data:
+        new_n = (update_data.get("assignee_name") or "").strip()
+        old_n = (task.get("assignee_name") or "").strip()
+        if new_n != old_n:
+            changed = True
+    if changed:
+        update_data["assigned_at"] = datetime.utcnow()
 
 @router.post("", response_model=Task, status_code=status.HTTP_201_CREATED)
 async def create_task(
     task_data: TaskCreate,
     current_user: User = Depends(get_current_user)
 ):
-    """Create a new task"""
-    db = await get_database()
-    
-    # Verify project access
-    await verify_project_membership(task_data.project_id, current_user)
-    
-    task_dict = task_data.model_dump()
-    task_dict["status"] = _normalize_status(task_dict.get("status"))
-    task_dict["is_auto_generated"] = False
-    task_dict["created_at"] = datetime.utcnow()
-    task_dict["updated_at"] = datetime.utcnow()
-    
-    result = await db.tasks.insert_one(task_dict)
-    task_dict["id"] = str(result.inserted_id)
-    return Task(**task_dict)
+    """Manual create disabled: tasks are generated from meetings only."""
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Manual task creation is disabled. Tasks are generated from meeting transcripts.",
+    )
 
 @router.get("", response_model=List[Task])
 async def list_tasks(
@@ -59,6 +66,19 @@ async def list_tasks(
         query["project_id"] = project_id
         # Verify access (will raise exception if not member)
         await verify_project_membership(project_id, current_user)
+        meetings = await db.meetings.find({"project_id": project_id}, {"_id": 1}).to_list(length=5000)
+        valid_meeting_ids = [str(m["_id"]) for m in meetings]
+        query["is_auto_generated"] = True
+        if valid_meeting_ids:
+            query["$or"] = [
+                {"source_meeting_id": {"$in": valid_meeting_ids}},
+                {"synced_from_meeting_ids": {"$in": valid_meeting_ids}},
+                {"copilot_created": True},
+            ]
+        else:
+            query["$or"] = [{"copilot_created": True}]
+    else:
+        query["is_auto_generated"] = True
     
     if assignee_id:
         query["assignee_id"] = assignee_id
@@ -104,6 +124,7 @@ async def update_task(
         update_data["status"] = _normalize_status(update_data["status"])
     if update_data.get("status") == "done" and not update_data.get("completed_at"):
         update_data["completed_at"] = datetime.utcnow()
+    apply_assignee_change_timestamp(task, update_data)
     update_data["updated_at"] = datetime.utcnow()
     
     await db.tasks.update_one(

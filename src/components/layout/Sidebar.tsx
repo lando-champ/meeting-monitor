@@ -92,7 +92,7 @@ const Sidebar = ({ items, title, subtitle }: SidebarProps) => {
         <div className="p-3 rounded-premium bg-gradient-to-br from-primary/10 to-secondary/10 border border-primary/20">
           <p className="font-medium text-sm mb-1">Upgrade to Pro</p>
           <p className="text-xs text-muted-foreground mb-3">
-            Unlock advanced analytics and AI coaching
+            Unlock advanced analytics and reporting
           </p>
           <Link
             to="#"

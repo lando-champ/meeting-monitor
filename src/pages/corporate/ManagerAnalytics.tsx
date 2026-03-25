@@ -8,20 +8,15 @@ import {
   BarChart3,
   Settings,
   TrendingUp,
-  TrendingDown,
-  MessageSquare,
-  Sparkles,
   Loader2,
 } from 'lucide-react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { SidebarItem } from '@/components/layout/Sidebar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend } from 'recharts';
+import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recharts';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { getProject, listMeetings, type ApiTask, type ProjectMember } from '@/lib/api';
@@ -69,12 +64,6 @@ const ManagerAnalytics = () => {
     { name: 'In Review', value: tasks.filter((t) => t.status === 'in_review').length, color: 'hsl(38 92% 50%)' },
     { name: 'Blockers', value: tasks.filter((t) => t.status === 'blockers').length, color: 'hsl(var(--destructive))' },
   ].filter((d) => d.value > 0);
-  const weeklyProgress = [
-    { week: 'W1', tasksCompleted: Math.min(doneCount, 10), productivityScore: teamScore },
-    { week: 'W2', tasksCompleted: 0, productivityScore: 0 },
-    { week: 'W3', tasksCompleted: 0, productivityScore: 0 },
-    { week: 'W4', tasksCompleted: 0, productivityScore: 0 },
-  ];
   const memberMetrics = memberDetails.map((member) => {
     const memberTasks = tasks.filter((t) => t.assignee_id === member.id);
     const completed = memberTasks.filter((t) => t.status === 'done').length;
@@ -112,8 +101,8 @@ const ManagerAnalytics = () => {
           </div>
         </div>
 
-        <div className="grid md:grid-cols-4 gap-4">
-          <Card className="rounded-premium shadow-neumorphic md:col-span-2 bg-gradient-to-br from-primary/5 to-secondary/5 border-0 hover-lift transition-shadow">
+        <div className="grid md:grid-cols-2 gap-4">
+          <Card className="rounded-premium shadow-neumorphic bg-gradient-to-br from-primary/5 to-secondary/5 border-0 hover-lift transition-shadow">
             <CardContent className="pt-6">
               {loading ? (
                 <div className="flex items-center justify-between">
@@ -127,9 +116,9 @@ const ManagerAnalytics = () => {
               ) : (
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-muted-foreground mb-1">Team Productivity Score</p>
+                    <p className="text-sm text-muted-foreground mb-1">Team completion rate</p>
                     <p className="text-5xl font-bold">{teamScore}%</p>
-                    <p className="text-xs text-muted-foreground mt-2">{doneCount} of {totalTasks} tasks completed</p>
+                    <p className="text-xs text-muted-foreground mt-2">{doneCount} of {totalTasks} tasks done</p>
                   </div>
                   <div className="h-24 w-24 rounded-full border-8 border-primary/20 flex items-center justify-center shadow-glow">
                     <div className="h-16 w-16 rounded-full gradient-primary flex items-center justify-center">
@@ -144,71 +133,11 @@ const ManagerAnalytics = () => {
             <CardContent className="pt-6">
               {loading ? <Skeleton className="h-16 w-full" /> : (
                 <>
-                  <p className="text-sm text-muted-foreground">Tasks Completed</p>
-                  <p className="text-3xl font-bold mt-1">{doneCount}</p>
-                  <p className="text-xs text-muted-foreground mt-2">Total</p>
-                </>
-              )}
-            </CardContent>
-          </Card>
-          <Card className="rounded-premium shadow-neumorphic border-0 hover-lift">
-            <CardContent className="pt-6">
-              {loading ? <Skeleton className="h-16 w-full" /> : (
-                <>
-                  <p className="text-sm text-muted-foreground">Meetings Held</p>
+                  <p className="text-sm text-muted-foreground">Meetings held</p>
                   <p className="text-3xl font-bold mt-1">{meetingsCount}</p>
                   <p className="text-xs text-muted-foreground mt-2">Ended</p>
                 </>
               )}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid lg:grid-cols-2 gap-6">
-          <Card className="rounded-premium-lg shadow-neumorphic border-0 overflow-hidden">
-            <CardHeader>
-              <CardTitle>Productivity Trend</CardTitle>
-              <CardDescription>Task completion</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64">
-                {loading ? (
-                  <Skeleton className="h-full w-full rounded-lg" />
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={weeklyProgress}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                      <XAxis dataKey="week" className="text-xs" stroke="hsl(var(--muted-foreground))" />
-                      <YAxis className="text-xs" stroke="hsl(var(--muted-foreground))" />
-                      <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }} />
-                      <Line type="monotone" dataKey="productivityScore" stroke="hsl(var(--primary))" strokeWidth={3} dot={{ fill: 'hsl(var(--primary))', strokeWidth: 0 }} isAnimationActive animationDuration={800} animationEasing="ease-out" />
-                    </LineChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="rounded-premium-lg shadow-neumorphic border-0 overflow-hidden">
-            <CardHeader>
-              <CardTitle>Tasks Completed</CardTitle>
-              <CardDescription>By period</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64">
-                {loading ? (
-                  <Skeleton className="h-full w-full rounded-lg" />
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={weeklyProgress}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                      <XAxis dataKey="week" className="text-xs" stroke="hsl(var(--muted-foreground))" />
-                      <YAxis className="text-xs" stroke="hsl(var(--muted-foreground))" />
-                      <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }} />
-                      <Bar dataKey="tasksCompleted" fill="hsl(var(--primary))" radius={[8, 8, 0, 0]} isAnimationActive animationDuration={800} animationEasing="ease-out" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
             </CardContent>
           </Card>
         </div>
@@ -291,23 +220,6 @@ const ManagerAnalytics = () => {
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-premium shadow-neumorphic border-2 border-primary/20 bg-gradient-to-r from-primary/5 to-transparent hover-lift">
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-secondary/10 flex items-center justify-center">
-                <Sparkles className="h-5 w-5 text-secondary" />
-              </div>
-              <div>
-                <CardTitle className="flex items-center gap-2">AI Coaching Assistant</CardTitle>
-                <CardDescription>Get insights about your team (coming soon)</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">Connect your goals and tasks for personalized coaching.</p>
           </CardContent>
         </Card>
       </div>

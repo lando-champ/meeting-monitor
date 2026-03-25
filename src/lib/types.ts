@@ -78,9 +78,12 @@ export interface Task {
   priority: TaskPriority;
   assignee?: TeamMember;
   assignee_id?: string | null;
+  assignee_name?: string | null;
+  assigned_at?: string | null;
   dueDate?: Date;
   due_date?: string | null;
   subtasks?: string[];
+  source_meeting_id?: string | null;
   sourceMeeting?: Meeting;
   createdAt: Date;
   updatedAt: Date;
