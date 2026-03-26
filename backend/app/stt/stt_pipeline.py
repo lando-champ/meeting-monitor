@@ -43,7 +43,7 @@ HALLUCINATION_PHRASES = frozenset({
     "transcribed by", "music", "applause",
 })
 # Maximum allowed consecutive identical hallucination-like outputs
-MAX_CONSECUTIVE_HALLUCINATION = 1
+MAX_CONSECUTIVE_HALLUCINATION = 2
 
 # Minimum text length (characters) to accept — allow short words ("Hi", "Yes")
 MIN_TEXT_LENGTH = 2
@@ -59,6 +59,13 @@ def _segment_field(segment: Any, key: str, default: Any = None) -> Any:
 def _contains_letters_or_digits(text: str) -> bool:
     """Reject punctuation-only outputs often returned on noise/silence."""
     return any(ch.isalnum() for ch in text)
+
+
+def _normalize_context_hints(raw_hints: str) -> str:
+    if not raw_hints:
+        return ""
+    hints = [h.strip() for h in raw_hints.split(",") if h.strip()]
+    return ", ".join(hints)
 
 
 def _transcription_text_and_segments(transcription: Any) -> tuple[str, Any]:
@@ -148,6 +155,23 @@ class STTPipeline:
         self._last_texts: list[str] = []
         self._consecutive_same: int = 0
         self._last_text: str = ""
+        self._context_hints = _normalize_context_hints(
+            str(getattr(settings, "STT_CONTEXT_HINTS", "") or "")
+        )
+        self._prompt_history_lines = max(
+            0, int(getattr(settings, "STT_PROMPT_HISTORY_LINES", 6))
+        )
+        self._accuracy_mode = bool(getattr(settings, "STT_ACCURACY_MODE", True))
+        self._transcribe_model = str(
+            getattr(settings, "STT_TRANSCRIBE_MODEL", "whisper-large-v3")
+        )
+        self._overlap_seconds = float(
+            getattr(
+                settings,
+                "STT_OVERLAP_SECONDS",
+                2.0 if self._accuracy_mode else 0.5,
+            )
+        )
 
         # Configurable thresholds
         self._silence_rms_threshold = float(getattr(settings, "STT_SILENCE_RMS_THRESHOLD", 80.0))
@@ -160,6 +184,35 @@ class STTPipeline:
         self._skipped_silence = 0
         self._skipped_hallucination = 0
         self._transcribed = 0
+
+    async def _requeue_chunk(self, chunk: bytes, keep_seconds: float = None) -> None:
+        """
+        Put a tail of the failed chunk back into the front of the buffer.
+        This prevents content loss when API calls fail or are rate-limited.
+        """
+        seconds = self._overlap_seconds if keep_seconds is None else max(0.2, float(keep_seconds))
+        keep_bytes = int(self.sample_rate * seconds * 2)
+        retry_tail = chunk[-keep_bytes:] if keep_bytes > 0 else b""
+        if not retry_tail:
+            return
+        async with self._lock:
+            self._buffer = bytearray(retry_tail) + self._buffer
+
+    def _build_whisper_prompt(self) -> str:
+        """
+        Build prompt context for Whisper using recent accepted text and glossary hints.
+        This improves consistency for names and technical terms at the cost of latency.
+        """
+        context_lines = self._last_texts[-self._prompt_history_lines:] if self._prompt_history_lines else []
+        parts = []
+        if context_lines:
+            parts.append("Recent meeting transcript context:\n" + "\n".join(context_lines))
+        if self._context_hints:
+            parts.append(
+                "Important terms and names (preserve exact words): "
+                + self._context_hints
+            )
+        return "\n\n".join(parts).strip()
 
     def process_audio(self, pcm_chunk: bytes) -> None:
         """Add PCM to buffer; does not run transcription (call process_buffer() after)."""
@@ -190,7 +243,7 @@ class STTPipeline:
 
             # Extract chunk with overlap for context continuity
             chunk = bytes(self._buffer[: self._bytes_per_chunk])
-            overlap_seconds = min(0.5, self.buffer_seconds / 2.0)
+            overlap_seconds = min(self._overlap_seconds, self.buffer_seconds * 0.8)
             overlap_bytes = int(self.sample_rate * overlap_seconds * 2)
             trim_bytes = max(0, self._bytes_per_chunk - overlap_bytes)
             del self._buffer[:trim_bytes]
@@ -257,12 +310,17 @@ class STTPipeline:
             # Fresh client per call avoids sharing httpx state across threads.
             def _call_groq():
                 client = Groq(api_key=settings.GROQ_API_KEY)
+                prompt = self._build_whisper_prompt()
+                model_name = self._transcribe_model
+                if not self._accuracy_mode and model_name == "whisper-large-v3":
+                    model_name = "whisper-large-v3-turbo"
                 return client.audio.transcriptions.create(
                     file=("audio.wav", wav_bytes, "audio/wav"),
-                    model="whisper-large-v3",
+                    model=model_name,
                     response_format="verbose_json",
                     language="en",
                     temperature=0.0,
+                    prompt=prompt if prompt else None,
                 )
 
             transcription = await asyncio.to_thread(_call_groq)
@@ -277,12 +335,14 @@ class STTPipeline:
             elif "429" in err_str or "rate" in err_str:
                 backoff = 20.0
                 self._rate_limit_until = time.monotonic() + backoff
+                await self._requeue_chunk(chunk)
                 logger.warning(
                     "Groq rate limit (429). Backing off %.0fs; transcription will resume.",
                     backoff,
                 )
             else:
                 logger.exception("Groq Whisper transcription failed: %s", e)
+                await self._requeue_chunk(chunk)
             return
 
         text, segments = _transcription_text_and_segments(transcription)
@@ -323,7 +383,8 @@ class STTPipeline:
         # ── Post-transcription filter: Consecutive identical outputs ──
         if text_clean == self._last_text:
             self._consecutive_same += 1
-            if self._consecutive_same >= MAX_CONSECUTIVE_HALLUCINATION:
+            # Only suppress repeated ultra-short phrases; long repeated sentences can be real speech.
+            if self._consecutive_same >= MAX_CONSECUTIVE_HALLUCINATION and len(text_clean) <= 20:
                 self._skipped_hallucination += 1
                 logger.debug(
                     "⏭ REPEATED text filtered (%dx): %r",

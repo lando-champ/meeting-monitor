@@ -51,7 +51,17 @@ class Settings(BaseSettings):
     # Leave unset to use default input device (usually mic).
     AUDIO_INPUT_DEVICE: Optional[Union[int, str]] = None
     # STT buffer seconds before calling Whisper (smaller = faster first transcript, more API calls)
-    STT_BUFFER_SECONDS: float = 2.0
+    STT_BUFFER_SECONDS: float = 5.0
+    # Accuracy-first mode keeps more context and can increase transcript delay.
+    STT_ACCURACY_MODE: bool = True
+    # Default Whisper model for streaming chunks.
+    STT_TRANSCRIBE_MODEL: str = "whisper-large-v3"
+    # Extra domain terms to bias Whisper toward correct spelling/pronunciation.
+    STT_CONTEXT_HINTS: str = "WebSocket, analytics, Vikram, project scope, testing"
+    # Number of previous accepted transcript segments to pass as prompt context.
+    STT_PROMPT_HISTORY_LINES: int = 6
+    # Overlap retained between chunks to avoid losing words at chunk boundaries.
+    STT_OVERLAP_SECONDS: float = 2.0
     # Skip sending chunks with RMS below this to reduce "Thank you" hallucinations on silence (set 0 to disable)
     STT_SILENCE_RMS_THRESHOLD: float = 80.0
 
