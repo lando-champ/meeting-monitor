@@ -145,6 +145,9 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
     }
   };
 
+  const toPercent = (value?: number) =>
+    `${Math.round(Math.max(0, Math.min(1, value ?? 0)) * 100)}%`;
+
   // API-driven bot meeting UI (Vyimayi-style tabs)
   if (!loading && apiDetail) {
     const {
@@ -323,6 +326,25 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
                 {meeting.ended_at && (
                   <p><span className="font-medium text-muted-foreground">Ended:</span> {format(new Date(meeting.ended_at), "PPpp")}</p>
                 )}
+                {summary?.meeting_signals && (
+                  <div className="mt-3 rounded-md border bg-muted/30 p-3 space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">Meeting insights</p>
+                    <p>
+                      <span className="font-medium text-muted-foreground">Confidence:</span>{" "}
+                      {toPercent(summary.meeting_signals.confidence_score)}
+                    </p>
+                    <p>
+                      <span className="font-medium text-muted-foreground">Toxicity:</span>{" "}
+                      {toPercent(summary.meeting_signals.toxicity_score)}
+                    </p>
+                    <p>
+                      <span className="font-medium text-muted-foreground">Emotion:</span>{" "}
+                      <span className="capitalize">
+                        {summary.meeting_signals.dominant_emotion || "neutral"}
+                      </span>
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -473,11 +495,6 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
                       >
                         <CheckSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
                         <span className="flex-1">{typeof a === "string" ? a : a.text}</span>
-                        {typeof a === "object" && "status" in a && (
-                          <Badge variant="secondary" className="text-xs capitalize shrink-0">
-                            {(a as { status: string }).status}
-                          </Badge>
-                        )}
                       </div>
                     ))}
                   </div>

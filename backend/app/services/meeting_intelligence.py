@@ -14,6 +14,7 @@ from groq import Groq
 
 from app.core.config import settings
 from app.core.database import get_database
+from app.services.transcription_cleaning import clean_transcription_text
 
 logger = logging.getLogger(__name__)
 
@@ -93,15 +94,23 @@ def _parse_model_json(raw: str) -> dict:
     raise json.JSONDecodeError("Invalid JSON", raw or "", 0)
 
 
+def _safe_score(value: Any, default: float) -> float:
+    try:
+        return max(0.0, min(1.0, float(value)))
+    except (TypeError, ValueError):
+        return default
+
+
 def _repair_summary_json_with_llm(client: Groq, broken_output: str) -> dict:
     """Second pass: convert model output into strict JSON with the expected keys."""
     repair_sys = """You fix malformed model output. The user message contains text that was meant to be one JSON object with keys:
-overview (string), key_points (array of strings), decisions (array of strings), action_items (array of strings).
+overview (string), key_points (array of strings), decisions (array of strings), action_items (array of strings), meeting_signals (object).
 
 Rules:
 - Output ONLY one JSON object, no markdown, no code fences, no commentary.
 - overview must be ONE JSON string. Put paragraph breaks inside the string as \\n (backslash-n). Do not put raw line breaks after "overview": without quotes.
 - All string values must use double quotes. Escape internal double quotes as \\".
+- Keep meeting_signals as an object with: confidence_score, toxicity_score, dominant_emotion, emotion_scores.
 - Copy faithfully from the broken text; do not invent meeting content."""
     resp = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
@@ -133,13 +142,18 @@ def summarize_and_extract(transcript: str) -> Tuple[dict, List[str]]:
     prompt = """You are a precise meeting assistant. Read the full transcript. You MUST respond with one JSON object only (no markdown, no ``` fences).
 
 Required shape (example structure only — replace values from the transcript):
-{"overview":"<single JSON string: 3-6 paragraphs of narrative summary; use \\n between paragraphs inside this string>","key_points":["..."],"decisions":["..."],"action_items":["..."]}
+{"overview":"<single JSON string: 3-6 paragraphs of narrative summary; use \\n between paragraphs inside this string>","key_points":["..."],"decisions":["..."],"action_items":["..."],"meeting_signals":{"confidence_score":0.0,"toxicity_score":0.0,"dominant_emotion":"neutral","emotion_scores":{"positive":0.0,"neutral":0.0,"negative":0.0}}}
 
 Field rules:
 - "overview": ONE string value in double quotes. Never write unquoted text after the colon. For new paragraphs inside overview use \\n inside the same string — not raw line breaks.
 - "key_points": array of strings — substantive takeaways (often 10–25 for long meetings).
 - "decisions": array of strings — finalized agreements; [] if none.
 - "action_items": array of strings — concrete next steps; do not invent owners/dates absent from transcript.
+- "meeting_signals": object with:
+  - confidence_score: 0.0..1.0 estimate of transcript/reasoning confidence.
+  - toxicity_score: 0.0..1.0 estimate of toxic or hostile language in the meeting.
+  - dominant_emotion: one of "positive" | "neutral" | "negative" | "mixed".
+  - emotion_scores: object with positive/neutral/negative floats from 0.0..1.0.
 
 Stay faithful to the transcript. Valid JSON only."""
     create_kwargs = dict(
@@ -183,6 +197,7 @@ Stay faithful to the transcript. Valid JSON only."""
     key_points = data.get("key_points")
     decisions = data.get("decisions")
     action_items = data.get("action_items")
+    meeting_signals = data.get("meeting_signals") if isinstance(data.get("meeting_signals"), dict) else {}
     if not isinstance(key_points, list):
         key_points = []
     if not isinstance(decisions, list):
@@ -196,6 +211,16 @@ Stay faithful to the transcript. Valid JSON only."""
         "overview": overview,
         "key_points": key_points,
         "decisions": decisions,
+        "meeting_signals": {
+            "confidence_score": _safe_score(meeting_signals.get("confidence_score"), 0.75),
+            "toxicity_score": _safe_score(meeting_signals.get("toxicity_score"), 0.05),
+            "dominant_emotion": str(meeting_signals.get("dominant_emotion") or "neutral").lower(),
+            "emotion_scores": {
+                "positive": _safe_score((meeting_signals.get("emotion_scores") or {}).get("positive"), 0.33),
+                "neutral": _safe_score((meeting_signals.get("emotion_scores") or {}).get("neutral"), 0.34),
+                "negative": _safe_score((meeting_signals.get("emotion_scores") or {}).get("negative"), 0.33),
+            },
+        },
     }
     return summary_dict, action_items
 
@@ -227,8 +252,13 @@ async def analyze_meeting_transcript(
         logger.info("Empty combined transcript for meeting_id=%s; skipping intelligence", meeting_id)
         return None
 
+    cleaned_text = clean_transcription_text(full_text)
+    if not cleaned_text.strip():
+        # If cleaning strips everything, fall back to original to avoid losing the meeting.
+        cleaned_text = full_text
+
     try:
-        summary_dict, action_items = summarize_and_extract(full_text)
+        summary_dict, action_items = summarize_and_extract(cleaned_text)
     except Exception as e:
         logger.exception("Meeting intelligence failed for meeting_id=%s: %s", meeting_id, e)
         return None
@@ -244,6 +274,8 @@ async def analyze_meeting_transcript(
             "summary_text": overview,
             "key_points": key_points,
             "decisions": summary_dict.get("decisions") or [],
+            "meeting_signals": summary_dict.get("meeting_signals") or {},
+            "cleaned_transcription": cleaned_text,
             "created_at": now,
         }
     )
@@ -256,7 +288,6 @@ async def analyze_meeting_transcript(
             {
                 "meeting_id": meeting_id,
                 "text": t,
-                "status": "pending",
                 "language": language,
                 "created_at": now,
             }

@@ -39,8 +39,17 @@ async def register(user_data: UserCreate):
             detail="Password must be at least 6 characters"
         )
     
+    # Normalize role text (free-form work role, e.g., "Frontend Developer", "QA Engineer")
+    role = (user_data.role or "").strip()
+    if not role:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Role is required",
+        )
+
     # Create user
     user_dict = user_data.model_dump(exclude={"password"})
+    user_dict["role"] = role
     user_dict["hashed_password"] = get_password_hash(user_data.password)
     user_dict["created_at"] = datetime.utcnow()
     user_dict["updated_at"] = datetime.utcnow()

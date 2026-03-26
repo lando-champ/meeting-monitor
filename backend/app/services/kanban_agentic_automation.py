@@ -60,6 +60,12 @@ class ExtractedTask:
 
 
 def _clean_transcript(text: str) -> str:
+    """
+    Normalize + clean transcription for task extraction.
+
+    This preserves the original heuristic cleaning (timestamps/speaker tags),
+    then applies deterministic filler/STT-error cleanup.
+    """
     t = (text or "").strip()
     if not t:
         return ""
@@ -69,7 +75,10 @@ def _clean_transcript(text: str) -> str:
     t = re.sub(r"(?m)^\s*[A-Za-z][\w .'-]{0,40}:\s*", "", t)
     # Collapse repeated spaces.
     t = re.sub(r"[ \t]+", " ", t)
-    return t.strip()
+
+    from app.services.transcription_cleaning import clean_transcription_text
+
+    return clean_transcription_text(t)
 
 
 def _chunk_text(text: str, size: int = MAX_CHARS_PER_CHUNK) -> List[str]:
@@ -848,7 +857,11 @@ async def clean_orphaned_kanban_tasks(project_id: str) -> int:
     return deleted
 
 
-async def rebuild_kanban_from_meeting_history(project_id: str, trigger_meeting_id: Optional[str] = None) -> dict:
+async def rebuild_kanban_from_meeting_history(
+    project_id: str,
+    trigger_meeting_id: Optional[str] = None,
+    fresh: bool = False,
+) -> dict:
     """
     Rebuild auto Kanban tasks: (1) cumulative transcripts → confirmed-assignment extraction + dedupe;
     (2) full board snapshot + latest meeting transcript → Groq column updates; informal items logged only.
@@ -858,6 +871,11 @@ async def rebuild_kanban_from_meeting_history(project_id: str, trigger_meeting_i
     if not meetings:
         wipe = await db.tasks.delete_many({"project_id": project_id, "is_auto_generated": True})
         return {"meetings": 0, "created": 0, "updated": 0, "review_required": 0, "deleted": wipe.deleted_count}
+
+    if fresh:
+        # Fresh extraction mode: ignore previous extraction state.
+        # Remove all auto-generated tasks for this project before re-extracting.
+        await db.tasks.delete_many({"project_id": project_id, "is_auto_generated": True})
 
     valid_meeting_ids = [str(m["_id"]) for m in meetings]
     latest_meeting_id = valid_meeting_ids[-1]

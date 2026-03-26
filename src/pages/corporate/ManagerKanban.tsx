@@ -157,10 +157,19 @@ const ManagerKanban = () => {
     const { active, over } = event;
     if (!over) return;
     const activeId = String(active.id);
-    const overId = String(over.id) as TaskStatus;
+    const overId = String(over.id);
+    const validStatuses = new Set(COLUMN_IDS);
+
+    // DnD-kit may report the "over" target as another draggable card (task id),
+    // not the droppable column id. If so, drop into that card's column.
+    const overStatus: TaskStatus | null = validStatuses.has(overId as TaskStatus)
+      ? (overId as TaskStatus)
+      : (tasks.find((t) => t.id === overId)?.status ?? null);
+
+    if (!overStatus) return;
     if (token && workspaceId) {
       try {
-        await updateProjectTask(token, workspaceId, activeId, { status: overId });
+        await updateProjectTask(token, workspaceId, activeId, { status: overStatus });
         await fetchProjectTasks();
       } catch {
         // keep local state on error
@@ -168,7 +177,7 @@ const ManagerKanban = () => {
     } else {
       setTasks((prev) =>
         prev.map((task) =>
-          task.id === activeId ? { ...task, status: overId, updatedAt: new Date() } : task,
+          task.id === activeId ? { ...task, status: overStatus, updatedAt: new Date() } : task,
         ),
       );
     }

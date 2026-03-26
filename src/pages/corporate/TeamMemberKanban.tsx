@@ -145,12 +145,21 @@ const TeamMemberKanban = () => {
     const { active, over } = event;
     if (!over || !token || !workspaceId) return;
     const activeId = String(active.id);
-    const overId = String(over.id) as TaskStatus;
+    const overId = String(over.id);
+    const validStatuses = new Set(Object.keys(columns) as TaskStatus[]);
+
+    // DnD-kit may report "over" as another card id (task.id) instead of a column id.
+    // In that case, drop into the status (column) of that card.
+    const overStatus: TaskStatus | null = validStatuses.has(overId as TaskStatus)
+      ? (overId as TaskStatus)
+      : (tasks.find((t) => t.id === overId)?.status ?? null);
+
+    if (!overStatus) return;
     try {
-      await updateProjectTask(token, workspaceId, activeId, { status: overId });
+      await updateProjectTask(token, workspaceId, activeId, { status: overStatus });
       setTasks((prev) =>
         prev.map((task) =>
-          task.id === activeId ? { ...task, status: overId, updatedAt: new Date() } : task
+          task.id === activeId ? { ...task, status: overStatus, updatedAt: new Date() } : task
         )
       );
     } catch {

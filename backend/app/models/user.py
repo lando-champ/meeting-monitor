@@ -1,5 +1,4 @@
-from pydantic import BaseModel, EmailStr
-from typing import Literal
+from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime
 from bson import ObjectId
 
@@ -21,7 +20,8 @@ class PyObjectId(ObjectId):
 class UserBase(BaseModel):
     name: str
     email: EmailStr
-    role: Literal["manager", "member", "teacher", "student"]
+    role: str
+    skills: list[str] = Field(default_factory=list)
     avatar: str | None = None
 
 class UserCreate(UserBase):

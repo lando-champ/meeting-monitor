@@ -3,7 +3,7 @@ FastAPI dependencies for authentication and authorization
 """
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from typing import List, Literal, Optional
+from typing import List, Optional
 from app.core.database import get_database
 from app.core.security import decode_access_token
 from app.models.user import User
@@ -52,7 +52,7 @@ async def get_current_active_user(
     # Future: Add account status checks (active, suspended, etc.)
     return current_user
 
-def require_role(allowed_roles: List[Literal["manager", "member", "teacher", "student"]]):
+def require_role(allowed_roles: List[str]):
     """Dependency factory for role-based access control"""
     async def role_checker(current_user: User = Depends(get_current_active_user)) -> User:
         if current_user.role not in allowed_roles:
@@ -65,8 +65,7 @@ def require_role(allowed_roles: List[Literal["manager", "member", "teacher", "st
 
 # Convenience dependencies for common role checks
 require_manager = require_role(["manager"])
-require_teacher = require_role(["teacher"])
-require_manager_or_teacher = require_role(["manager", "teacher"])
+require_manager_or_member = require_role(["manager", "member"])
 
 async def verify_project_membership(
     project_id: str,

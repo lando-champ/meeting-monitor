@@ -19,7 +19,8 @@ export interface ApiUser {
   id: string;
   name: string;
   email: string;
-  role: "manager" | "member" | "teacher" | "student";
+  role: string;
+  skills?: string[];
   avatar?: string | null;
   created_at: string;
   updated_at: string;
@@ -59,7 +60,8 @@ export async function register(data: {
   name: string;
   email: string;
   password: string;
-  role: "manager" | "member" | "teacher" | "student";
+  role: string;
+  skills?: string[];
   avatar?: string | null;
 }): Promise<ApiUser> {
   const res = await fetch(`${apiBaseUrl}/api/v1/auth/register`, {
@@ -111,8 +113,22 @@ export interface MeetingBotDetail {
     duration_seconds?: number;
     meeting_role?: string;
   }[];
-  summary: { summary_text?: string; key_points?: string[] } | null;
-  action_items: { text: string; status: string }[];
+  summary: {
+    summary_text?: string;
+    key_points?: string[];
+    decisions?: string[];
+    meeting_signals?: {
+      confidence_score?: number;
+      toxicity_score?: number;
+      dominant_emotion?: string;
+      emotion_scores?: {
+        positive?: number;
+        neutral?: number;
+        negative?: number;
+      };
+    };
+  } | null;
+  action_items: { text: string }[];
   total_participants?: number;
   total_duration?: number | null;
 }

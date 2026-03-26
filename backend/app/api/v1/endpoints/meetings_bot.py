@@ -171,8 +171,9 @@ async def get_meeting(
             "summary_text": summary_doc.get("summary_text") if summary_doc else None,
             "key_points": summary_doc.get("key_points") if summary_doc else None,
             "decisions": summary_doc.get("decisions") if summary_doc else None,
+            "meeting_signals": summary_doc.get("meeting_signals") if summary_doc else None,
         } if summary_doc else None,
-        "action_items": [{"text": a.get("text"), "status": a.get("status")} for a in action_docs],
+        "action_items": [{"text": a.get("text")} for a in action_docs],
         "total_participants": unique_participants,
         "total_duration": total_duration,
     }

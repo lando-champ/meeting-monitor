@@ -21,7 +21,8 @@ interface AuthContextValue {
     name: string;
     email: string;
     password: string;
-    role: "manager" | "member" | "teacher" | "student";
+    role: string;
+    skills?: string[];
     avatar?: string | null;
   }) => Promise<void>;
   logout: () => void;
@@ -109,7 +110,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       name: string;
       email: string;
       password: string;
-      role: "manager" | "member" | "teacher" | "student";
+      role: string;
+      skills?: string[];
       avatar?: string | null;
     }) => {
       await apiRegister(data);

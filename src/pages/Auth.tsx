@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Sparkles, Mail, Lock, User, ArrowRight, Building2 } from 'lucide-react';
+import { Sparkles, Mail, Lock, User, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,9 +11,20 @@ import { useAuth } from '@/context/AuthContext';
 
 const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedAvatar, setSelectedAvatar] = useState(
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=avatar-1"
+  );
   const navigate = useNavigate();
   const { toast } = useToast();
   const { login, register, isAuthenticated } = useAuth();
+  const avatarOptions = [
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=avatar-1",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=avatar-2",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=avatar-3",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=avatar-4",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=avatar-5",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=avatar-6",
+  ];
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -50,11 +61,17 @@ const Auth = () => {
     const name = (form.querySelector('#signup-name') as HTMLInputElement)?.value?.trim();
     const email = (form.querySelector('#signup-email') as HTMLInputElement)?.value?.trim();
     const password = (form.querySelector('#signup-password') as HTMLInputElement)?.value;
-    if (!name || !email || !password) return;
-    const role = 'manager';
+    const role = (form.querySelector('#signup-role') as HTMLInputElement)?.value?.trim();
+    const skillsRaw = (form.querySelector('#signup-skills') as HTMLInputElement)?.value ?? '';
+    const skills = skillsRaw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const avatar = selectedAvatar;
+    if (!name || !email || !password || !role) return;
     setIsLoading(true);
     try {
-      await register({ name, email, password, role });
+      await register({ name, email, password, role, skills, avatar });
       toast({ title: "Account created!", description: "Welcome. Your profile has been saved." });
       // Navigation happens in useEffect when isAuthenticated becomes true
     } catch (err) {
@@ -140,6 +157,53 @@ const Auth = () => {
                     <div className="relative">
                       <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Input id="signup-password" type="password" placeholder="••••••••" className="pl-10" required minLength={6} />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-role">Role</Label>
+                    <Input
+                      id="signup-role"
+                      type="text"
+                      list="signup-role-suggestions"
+                      placeholder="Frontend Dev, QA Engineer, DevOps, Testing..."
+                      required
+                    />
+                    <datalist id="signup-role-suggestions">
+                      <option value="Frontend Developer" />
+                      <option value="Backend Developer" />
+                      <option value="Full Stack Developer" />
+                      <option value="QA Engineer" />
+                      <option value="DevOps Engineer" />
+                      <option value="Tester" />
+                      <option value="Product Manager" />
+                    </datalist>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-skills">Skills (comma separated)</Label>
+                    <Input id="signup-skills" type="text" placeholder="React, Python, Analytics" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-avatar">Avatar</Label>
+                    <div id="signup-avatar" className="grid grid-cols-6 gap-2">
+                      {avatarOptions.map((avatarUrl) => (
+                        <button
+                          key={avatarUrl}
+                          type="button"
+                          onClick={() => setSelectedAvatar(avatarUrl)}
+                          className={`rounded-full p-0.5 border transition ${
+                            selectedAvatar === avatarUrl
+                              ? "border-primary ring-2 ring-primary/30"
+                              : "border-border hover:border-primary/50"
+                          }`}
+                          aria-label="Select avatar"
+                        >
+                          <img
+                            src={avatarUrl}
+                            alt="Avatar option"
+                            className="h-10 w-10 rounded-full bg-muted"
+                          />
+                        </button>
+                      ))}
                     </div>
                   </div>
                   <Button type="submit" className="w-full" disabled={isLoading}>

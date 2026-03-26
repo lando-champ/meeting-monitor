@@ -2,7 +2,7 @@
 export type Domain = 'corporate' | 'education';
 export type CorporateRole = 'manager' | 'team-member';
 export type EducationRole = 'teacher' | 'student';
-export type UserRole = CorporateRole | EducationRole;
+export type UserRole = string;
 
 export interface User {
   id: string;

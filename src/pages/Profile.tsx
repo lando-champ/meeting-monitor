@@ -8,14 +8,7 @@ const Profile = () => {
 
   if (!user) return null;
 
-  const roleLabel =
-    user.role === "manager"
-      ? "Manager"
-      : user.role === "member"
-        ? "Team Member"
-        : user.role === "teacher"
-          ? "Teacher"
-          : "Student";
+  const roleLabel = (user.role || "").trim() || "Member";
 
   return (
     <div className="container max-w-2xl py-8 px-4">

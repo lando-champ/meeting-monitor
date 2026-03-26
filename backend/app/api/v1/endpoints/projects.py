@@ -144,7 +144,8 @@ async def extract_project_tasks(
     current_user: User = Depends(get_current_user),
 ):
     """Rebuild Kanban tasks from meeting history using agentic automation."""
-    result = await rebuild_kanban_from_meeting_history(project_id)
+    # "Fresh extraction mode": reprocess from scratch to avoid stale/duplicate tasks.
+    result = await rebuild_kanban_from_meeting_history(project_id, fresh=True)
     return {"message": "Kanban rebuilt from meeting history", "project_id": project_id, "result": result}
 
 

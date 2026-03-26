@@ -19,8 +19,11 @@ interface TopBarProps {
   liveMeetingTitle?: string | null;
 }
 
-const roleLabel = (role: string) =>
-  role === "manager" ? "Manager" : role === "member" ? "Team Member" : role === "teacher" ? "Teacher" : "Student";
+const roleLabel = (role: string) => {
+  const cleaned = (role || "").trim();
+  if (!cleaned) return "Member";
+  return cleaned;
+};
 
 function useClock() {
   const [now, setNow] = useState(() => new Date());
