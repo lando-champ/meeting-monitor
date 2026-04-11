@@ -52,3 +52,34 @@ def decode_access_token(token: str) -> Optional[dict]:
         return payload
     except JWTError:
         return None
+
+
+PASSWORD_RESET_PURPOSE = "password_reset"
+
+
+def create_password_reset_token(user_id: str) -> str:
+    """Short-lived JWT for password reset only (sub = Mongo user id string)."""
+    minutes = int(getattr(settings, "PASSWORD_RESET_TOKEN_EXPIRE_MINUTES", 60) or 60)
+    expire = datetime.utcnow() + timedelta(minutes=max(5, min(minutes, 24 * 60)))
+    payload = {
+        "sub": user_id,
+        "purpose": PASSWORD_RESET_PURPOSE,
+        "exp": expire,
+    }
+    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
+def decode_password_reset_token(token: str) -> Optional[str]:
+    """Returns user_id string if token is valid and purpose is password_reset."""
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+        if payload.get("purpose") != PASSWORD_RESET_PURPOSE:
+            return None
+        uid = payload.get("sub")
+        return str(uid).strip() if uid else None
+    except JWTError:
+        return None

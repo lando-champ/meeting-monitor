@@ -4,11 +4,19 @@ from datetime import datetime
 
 from app.core.database import get_database
 from app.core.dependencies import get_current_user, verify_project_membership, verify_project_owner
-from app.models.project import Project, ProjectCreate, ProjectOut, ProjectDetail, MemberInfo
+from app.models.project import (
+    Project,
+    ProjectCreate,
+    ProjectOut,
+    ProjectDetail,
+    MemberInfo,
+    ProjectGitHubSettings,
+)
 from app.models.task import Task, TaskCreate, TaskUpdate, TaskCreateBody
 from app.models.user import User
-from app.api.v1.endpoints.tasks import _task_doc_to_model, _normalize_status, apply_assignee_change_timestamp
+from app.api.v1.endpoints.tasks import task_with_key, _normalize_status, apply_assignee_change_timestamp
 from bson import ObjectId
+from pymongo.errors import DuplicateKeyError, OperationFailure
 from app.services.kanban_agentic_automation import rebuild_kanban_from_meeting_history
 from app.services.workspace_copilot import run_workspace_copilot
 
@@ -39,6 +47,9 @@ async def create_project(project_data: ProjectCreate, current_user: User = Depen
     if existing:
         raise HTTPException(status_code=400, detail="Invite code already exists")
     project_dict = project_data.model_dump(exclude_unset=True)
+    # GitHub repo link is owner-managed only (PATCH /github), not at public create.
+    project_dict.pop("github_full_name", None)
+    project_dict.pop("github_webhook_enabled", None)
     project_dict["owner_id"] = project_dict.get("owner_id") or current_user.id
     project_dict["members"] = [current_user.id]
     project_dict["created_at"] = datetime.utcnow()
@@ -90,7 +101,7 @@ async def get_project(
     else:
         task_filter["$or"] = [{"copilot_created": True}]
     task_docs = await db.tasks.find(task_filter).sort("created_at", -1).to_list(length=500)
-    tasks = [_task_doc_to_model(t) for t in task_docs]
+    tasks = [await task_with_key(db, t) for t in task_docs]
     return ProjectDetail(**project_out.model_dump(), tasks=tasks)
 
 
@@ -134,7 +145,51 @@ async def update_project_task(
     update_data["updated_at"] = datetime.utcnow()
     await db.tasks.update_one({"_id": oid}, {"$set": update_data})
     updated = await db.tasks.find_one({"_id": oid})
-    return _task_doc_to_model(updated)
+    return await task_with_key(db, updated)
+
+
+@router.patch("/{project_id}/github", response_model=ProjectOut)
+async def patch_project_github(
+    project_id: str,
+    body: ProjectGitHubSettings,
+    project: dict = Depends(verify_project_owner),
+):
+    """Set GitHub repo mapping and webhook toggle. Project owner only."""
+    db = await get_database()
+    data = body.model_dump(exclude_unset=True)
+    set_doc: dict = {}
+    unset_doc: dict = {}
+    if "github_full_name" in data:
+        raw = data["github_full_name"]
+        if raw is None or (isinstance(raw, str) and not str(raw).strip()):
+            unset_doc["github_full_name"] = ""
+        else:
+            set_doc["github_full_name"] = str(raw).strip().lower()
+    if "github_webhook_enabled" in data:
+        set_doc["github_webhook_enabled"] = bool(data["github_webhook_enabled"])
+    if not set_doc and not unset_doc:
+        fresh = await db.projects.find_one({"_id": project["_id"]})
+        return await _project_to_out(db, {**fresh, "_id": fresh["_id"]})
+    now = datetime.utcnow()
+    update: dict = {"$set": {**set_doc, "updated_at": now}}
+    if unset_doc:
+        update["$unset"] = unset_doc
+    try:
+        await db.projects.update_one({"_id": project["_id"]}, update)
+    except DuplicateKeyError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="That GitHub repository is already linked to another project.",
+        )
+    except OperationFailure as e:
+        if getattr(e, "code", None) == 11000:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="That GitHub repository is already linked to another project.",
+            )
+        raise
+    fresh = await db.projects.find_one({"_id": project["_id"]})
+    return await _project_to_out(db, {**fresh, "_id": fresh["_id"]})
 
 
 @router.post("/{project_id}/extract-tasks", status_code=status.HTTP_200_OK)

@@ -147,7 +147,7 @@ class STTPipeline:
         self._buffer = bytearray()
         self._bytes_per_chunk = int(self.sample_rate * self.buffer_seconds * 2)
         self._last_transcribe_time = 0.0
-        self._min_interval = self.buffer_seconds
+        self._min_interval = float(getattr(settings, "STT_MIN_INTERVAL_SECONDS", self.buffer_seconds))
         self._lock = asyncio.Lock()
         self._rate_limit_until = 0.0
 

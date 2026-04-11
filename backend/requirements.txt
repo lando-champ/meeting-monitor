@@ -1,5 +1,6 @@
 fastapi
 uvicorn[standard]
+httpx
 motor
 pymongo
 python-jose[cryptography]
@@ -19,3 +20,6 @@ webrtcvad
 selenium
 webdriver-manager
 websockets
+# Kanban RAG (local embeddings + FAISS)
+faiss-cpu
+sentence-transformers

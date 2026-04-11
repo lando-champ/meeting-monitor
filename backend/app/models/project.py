@@ -17,6 +17,16 @@ class ProjectBase(BaseModel):
     description: Optional[str] = None
     invite_code: str
     project_type: Literal["workspace", "class"]
+    # GitHub: owner/repo for webhook → project mapping (optional)
+    github_full_name: Optional[str] = None
+    github_webhook_enabled: bool = False
+
+
+class ProjectGitHubSettings(BaseModel):
+    """Owner-only PATCH body for GitHub ↔ Kanban integration."""
+
+    github_full_name: Optional[str] = None
+    github_webhook_enabled: Optional[bool] = None
 
 
 class ProjectCreate(ProjectBase):

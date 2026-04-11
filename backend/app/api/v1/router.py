@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, projects, tasks, recordings, meeting_bot_ws, meetings_bot
+from app.api.v1.endpoints import auth, projects, tasks, recordings, meeting_bot_ws, meetings_bot, github_webhook
 
 from app.bot.bot_manager import bot_manager
 
@@ -11,6 +11,7 @@ api_router.include_router(recordings.router, prefix="/recordings", tags=["record
 api_router.include_router(tasks.router, prefix="/tasks", tags=["tasks"])
 api_router.include_router(meeting_bot_ws.router, prefix="/ws", tags=["meeting-bot-ws"])
 api_router.include_router(meetings_bot.router, prefix="/meetings", tags=["meetings"])
+api_router.include_router(github_webhook.router, prefix="/webhooks", tags=["webhooks"])
 
 # Wire bot manager into meeting routes (start/stop)
 meetings_bot.set_bot_manager(bot_manager)

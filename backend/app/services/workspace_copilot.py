@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.services.meeting_intelligence import get_groq_client
 from app.services.meeting_context_qa import _build_transcript_text
 from app.services.kanban_agentic_automation import rebuild_kanban_from_meeting_history
+from app.services.task_key import ensure_task_key_persisted
 from app.api.v1.endpoints.tasks import _normalize_status
 
 logger = logging.getLogger(__name__)
@@ -305,6 +306,7 @@ Rules:
                     "completed_at": None,
                 }
                 await db.tasks.insert_one(doc)
+                await ensure_task_key_persisted(db, doc)
                 executed.append(
                     {
                         "type": "create_task",

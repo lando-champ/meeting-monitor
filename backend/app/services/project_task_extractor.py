@@ -10,6 +10,7 @@ from difflib import SequenceMatcher
 from typing import List, Optional
 
 from app.core.database import get_database
+from app.services.task_key import ensure_task_key_persisted
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,9 @@ async def sync_tasks_to_kairox(project_id: str) -> None:
                 "updated_at": now,
             }
             result = await db.tasks.insert_one(new_doc)
-            existing.append({**new_doc, "_id": result.inserted_id})
+            row = {**new_doc, "_id": result.inserted_id}
+            row["task_key"] = await ensure_task_key_persisted(db, row)
+            existing.append(row)
             logger.debug("Created task from action_item: %s", title[:80])
 
     logger.info("Task sync from action_items finished project_id=%s items_processed=%d", project_id, len(items))

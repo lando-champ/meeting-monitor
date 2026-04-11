@@ -1,5 +1,5 @@
 from pydantic import BaseModel, field_validator
-from typing import Literal, Optional, List
+from typing import Literal, Optional, List, Any, Dict
 from datetime import datetime
 from bson import ObjectId
 
@@ -70,6 +70,9 @@ class Task(TaskBase):
     created_at: datetime
     updated_at: datetime
     completed_at: Optional[datetime] = None
+    # Reference in Git: PREFIX-XXXXXXXX (see task_key service)
+    task_key: Optional[str] = None
+    git_evidence: Optional[List[Dict[str, Any]]] = None
 
     class Config:
         from_attributes = True

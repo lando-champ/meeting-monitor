@@ -56,6 +56,40 @@ export async function login(email: string, password: string): Promise<{ token: T
   return { token, user };
 }
 
+export async function forgotPassword(
+  email: string,
+): Promise<{ message: string; reset_token?: string; reset_url?: string }> {
+  const res = await fetch(`${apiBaseUrl}/api/v1/auth/forgot-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg = Array.isArray(err.detail)
+      ? err.detail.map((e: { msg?: string }) => e.msg).join(", ")
+      : (err.detail ?? "Request failed");
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+export async function resetPassword(token: string, new_password: string): Promise<{ message: string }> {
+  const res = await fetch(`${apiBaseUrl}/api/v1/auth/reset-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, new_password }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg = Array.isArray(err.detail)
+      ? err.detail.map((e: { msg?: string }) => e.msg).join(", ")
+      : (err.detail ?? "Reset failed");
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
 export async function register(data: {
   name: string;
   email: string;
@@ -274,6 +308,9 @@ export interface ApiProject {
   member_details: ProjectMember[];
   created_at: string;
   updated_at: string;
+  /** GitHub `owner/repo` when linked (Kanban webhook). */
+  github_full_name?: string | null;
+  github_webhook_enabled?: boolean;
 }
 
 export async function createProject(
@@ -313,6 +350,17 @@ export async function listProjects(
   return res.json();
 }
 
+/** Single entry from GitHub webhook completion (append-only on task). */
+export interface ApiGitEvidenceEntry {
+  source?: string;
+  event?: string;
+  sha?: string;
+  url?: string;
+  actor?: string;
+  at?: string;
+  message?: string;
+}
+
 export interface ApiTask {
   id: string;
   project_id: string;
@@ -330,6 +378,9 @@ export interface ApiTask {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  /** Reference in PR/commit messages (e.g. MM-AB12CD34). */
+  task_key?: string | null;
+  git_evidence?: ApiGitEvidenceEntry[] | null;
 }
 
 export interface ApiProjectWithTasks extends ApiProject {
@@ -341,6 +392,40 @@ export async function getProject(token: string, projectId: string): Promise<ApiP
     headers: getAuthHeaders(token),
   });
   if (!res.ok) throw new Error("Failed to load project");
+  return res.json();
+}
+
+/** Public URL to paste in GitHub → Webhooks (depends on `VITE_API_URL` or current origin). */
+export function getGithubWebhookCallbackUrl(): string {
+  const base = (apiBaseUrl || "").replace(/\/$/, "");
+  if (base) return `${base}/api/v1/webhooks/github`;
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/api/v1/webhooks/github`;
+  }
+  return "/api/v1/webhooks/github";
+}
+
+/** Project owner only: link `owner/repo` and toggle webhook deliveries. */
+export async function patchProjectGitHub(
+  token: string,
+  projectId: string,
+  body: { github_full_name?: string | null; github_webhook_enabled?: boolean }
+): Promise<ApiProject> {
+  const res = await fetch(`${apiBaseUrl}/api/v1/projects/${encodeURIComponent(projectId)}/github`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders(token) },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg =
+      typeof err.detail === "string"
+        ? err.detail
+        : Array.isArray(err.detail)
+          ? err.detail.map((e: { msg?: string }) => e.msg).join(", ")
+          : "Failed to update GitHub settings";
+    throw new Error(msg);
+  }
   return res.json();
 }
 

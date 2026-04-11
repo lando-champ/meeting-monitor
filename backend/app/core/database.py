@@ -45,6 +45,16 @@ async def create_indexes():
     await ensure_index(database.projects, "owner_id")
     await ensure_index(database.projects, "members")
     await ensure_index(database.projects, "project_type")
+    # One GitHub repo per project (optional); only non-empty values indexed.
+    # Use $gt: "" not $ne: "" — MongoDB partial indexes reject $ne (rewrites to unsupported $not).
+    await ensure_index(
+        database.projects,
+        "github_full_name",
+        unique=True,
+        partialFilterExpression={
+            "github_full_name": {"$exists": True, "$type": "string", "$gt": ""},
+        },
+    )
 
     # Meeting bot collections (default names; idempotent)
     await ensure_index(database.meetings, "project_id")
@@ -67,6 +77,14 @@ async def create_indexes():
     await ensure_index(database.tasks, [("project_id", 1), ("status", 1)])
     await ensure_index(database.tasks, [("project_id", 1), ("is_auto_generated", 1), ("source_meeting_id", 1)])
     await ensure_index(database.tasks, "synced_from_meeting_ids")
+    await ensure_index(
+        database.tasks,
+        [("project_id", 1), ("task_key", 1)],
+        unique=True,
+        partialFilterExpression={
+            "task_key": {"$exists": True, "$type": "string", "$gt": ""},
+        },
+    )
 
     # Kanban automation logs/review queues
     await ensure_index(database.kanban_automation_runs, "project_id")

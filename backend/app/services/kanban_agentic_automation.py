@@ -25,11 +25,22 @@ from bson import ObjectId
 
 from app.core.config import settings
 from app.core.database import get_database
+from app.services.task_key import ensure_task_key_persisted
 
 logger = logging.getLogger(__name__)
 
 KANBAN_STATUSES = {"todo", "in_progress", "in_review", "done", "blockers"}
 MAX_CHARS_PER_CHUNK = 30_000
+
+
+def _kanban_extract_max_tokens() -> int:
+    v = int(getattr(settings, "TASK_AUTOMATION_EXTRACT_MAX_TOKENS", 3072) or 3072)
+    return max(512, min(v, 8192))
+
+
+def _kanban_board_sync_max_tokens() -> int:
+    v = int(getattr(settings, "TASK_AUTOMATION_BOARD_SYNC_MAX_TOKENS", 2048) or 2048)
+    return max(256, min(v, 8192))
 
 # Higher = further along; used when merging duplicate extractions across chunks.
 _STATUS_RANK = {"todo": 1, "in_progress": 2, "in_review": 3, "blockers": 4, "done": 5}
@@ -583,7 +594,7 @@ def _groq_sync_board_with_latest_transcript(
 
 Input JSON (in the user message) contains:
 - kanban_board: every task already on the board (task_id, title, assignee_name, status, due_date).
-- latest_meeting_transcript: transcript for the most recent meeting only.
+- latest_meeting_transcript: transcript for the most recent meeting only (may be a retrieved excerpt of the most relevant lines, not the full recording).
 - reference_date: calendar date of that meeting (for interpreting "today", "tomorrow", "this Friday" in due dates).
 
 Output ONE JSON object only, no markdown:
@@ -630,7 +641,7 @@ If nothing changes, return {"task_updates":[],"informal_action_items":[]}."""
             {"role": "user", "content": user_content},
         ],
         temperature=0.1,
-        max_tokens=8192,
+        max_tokens=_kanban_board_sync_max_tokens(),
         response_format={"type": "json_object"},
     )
     try:
@@ -659,13 +670,13 @@ def _extract_tasks_with_llm(
         for mid in meeting_id_order
         if mid in meeting_ref_dates
     )
-    schema_prompt = f"""You extract ONLY **confirmed Kanban tasks** from CUMULATIVE meeting transcripts (several meetings, oldest first).
+    schema_prompt = """You extract ONLY **confirmed Kanban tasks** from meeting transcript excerpts (possibly from several meetings, oldest-first context in the user message).
 A row belongs on the Kanban board only when there is **clear individual ownership AND commitment**.
 
-Output ONE JSON object only: {{"tasks":[...]}}
+Output ONE JSON object only: {"tasks":[...]}
 
 Each task:
-{{
+{
   "title": string (concrete deliverable, not a job title or stack name),
   "assignee": string (one person's name as spoken — NEVER "Team", "we", "someone", or a role label),
   "confirmation_basis": "direct_assignment" | "request_and_acceptance",
@@ -675,7 +686,7 @@ Each task:
   "transcript_evidence": string,
   "evidence_meeting_id": string,
   "confidence": number
-}}
+}
 
 QUALIFIES as confirmed (include):
 - **direct_assignment**: Someone is explicitly given ownership (e.g. "Amit will handle the backend", "I'll own the API", "Sarah's on the deck for Friday").
@@ -691,18 +702,13 @@ Cross-meeting:
 - **Latest meeting wins** when the same work is discussed again.
 - If meeting 1 only had a vague idea but meeting 2 has a **named person committing**, output ONE merged task with evidence from the meeting where commitment became clear.
 
-transcript_evidence: verbatim contiguous excerpt from the Transcript below (no paraphrase). Include enough to show ownership/commitment.
+The user message contains the meeting catalog, per-meeting reference dates, latest meeting_id, and transcript excerpt(s) (sections marked with === Meeting meeting_id=... ===).
 
-evidence_meeting_id: meeting_id= from the `=== Meeting ... meeting_id=... ===` header for the section containing transcript_evidence.
+transcript_evidence: verbatim contiguous excerpt from those transcript sections only (no paraphrase). Include enough to show ownership/commitment.
+
+evidence_meeting_id: meeting_id from the === Meeting ... meeting_id=... === header for the section containing transcript_evidence.
 
 EXCLUDE: standalone intros; titles that are only role labels (e.g. "Backend development") with intro context.
-
-Meeting catalog:
-{meeting_catalog_text}
-
-Per-meeting reference dates:
-{catalog_dates}
-Latest meeting_id: {latest_meeting_id}
 
 due_date: use reference_date of evidence_meeting_id for "today", EOD, tomorrow, this Friday, etc.
 
@@ -712,8 +718,10 @@ confidence: how explicit the commitment is (0.0–1.0)."""
         logger.warning("Unsupported TASK_AUTOMATION_PROVIDER=%s, fallback to groq", provider)
     client = _get_groq_client()
     user_blob = (
-        f"{meeting_catalog_text}\n\n"
-        f"=== Full cumulative transcript (chunk) ===\n{chunk_text}"
+        f"Meeting catalog:\n{meeting_catalog_text}\n\n"
+        f"Per-meeting reference dates:\n{catalog_dates}\n\n"
+        f"Latest meeting_id: {latest_meeting_id}\n\n"
+        f"=== Transcript excerpt(s) for task extraction ===\n{chunk_text}"
     )
     create_kwargs = dict(
         model=settings.TASK_AUTOMATION_MODEL,
@@ -722,7 +730,7 @@ confidence: how explicit the commitment is (0.0–1.0)."""
             {"role": "user", "content": user_blob},
         ],
         temperature=0.1,
-        max_tokens=8192,
+        max_tokens=_kanban_extract_max_tokens(),
         response_format={"type": "json_object"},
     )
     try:
@@ -885,6 +893,7 @@ async def rebuild_kanban_from_meeting_history(
     catalog_lines: List[str] = []
     bundle_sections: List[str] = []
     latest_meeting_cleaned = ""
+    meeting_cleaned_by_id: Dict[str, str] = {}
 
     for i, m in enumerate(meetings):
         mid = str(m["_id"])
@@ -901,6 +910,7 @@ async def rebuild_kanban_from_meeting_history(
         cleaned = _clean_transcript(text)
         if not cleaned:
             continue
+        meeting_cleaned_by_id[mid] = cleaned
         if mid == latest_meeting_id:
             latest_meeting_cleaned = cleaned
         bundle_sections.append(
@@ -928,26 +938,66 @@ async def rebuild_kanban_from_meeting_history(
     extracted_agg: List[ExtractedTask] = []
     chunks: List[str] = []
     if full_bundle.strip():
-        chunks = _chunk_text(full_bundle)
-        for chunk in chunks:
+        use_rag = bool(getattr(settings, "KANBAN_RAG_ENABLED", True))
+        if use_rag:
             try:
-                extracted_agg.extend(
-                    _extract_tasks_with_llm(
-                        chunk,
-                        meeting_catalog_text,
-                        latest_meeting_id,
-                        meeting_ref_dates,
-                        valid_meeting_ids,
-                        ordinal_by_meeting_id,
-                    )
+                from app.services.kanban_transcript_rag import (
+                    TranscriptRAGIndex,
+                    build_fallback_tail,
+                    retrieve_context_for_kanban,
                 )
+
+                idx = TranscriptRAGIndex.from_meeting_texts(
+                    meeting_cleaned_by_id, ordinal_by_meeting_id
+                )
+                if idx is not None:
+                    ctx, best_sc = retrieve_context_for_kanban(idx, latest_meeting_id)
+                    min_sim = float(getattr(settings, "KANBAN_RAG_MIN_SIMILARITY", 0.22) or 0.0)
+                    tail_n = int(getattr(settings, "KANBAN_RAG_FALLBACK_TAIL_CHARS", 8000) or 8000)
+                    tail = build_fallback_tail(latest_meeting_cleaned, tail_n)
+                    if len((ctx or "").strip()) < 400 or best_sc < min_sim:
+                        if tail.strip():
+                            fb = (
+                                f"=== Meeting meeting_id={latest_meeting_id} "
+                                f"(recent transcript fallback) ===\n{tail}"
+                            )
+                            ctx = f"{ctx}\n\n{fb}".strip() if (ctx or "").strip() else fb
+                    if (ctx or "").strip():
+                        chunks = [ctx.strip()]
+                    else:
+                        chunks = _chunk_text(full_bundle)
+                else:
+                    chunks = _chunk_text(full_bundle)
             except Exception as e:
-                logger.exception(
-                    "Task extraction failed project_id=%s cumulative chunk (len=%s): %s",
-                    project_id,
-                    len(chunk),
-                    e,
-                )
+                logger.warning("Kanban RAG failed, using legacy transcript chunks: %s", e)
+                chunks = _chunk_text(full_bundle)
+        else:
+            chunks = _chunk_text(full_bundle)
+
+        if not chunks:
+            chunks = _chunk_text(full_bundle)
+
+        for chunk in chunks:
+            subchunks = _chunk_text(chunk, 16_000) if len(chunk) > 18_000 else [chunk]
+            for sc in subchunks:
+                try:
+                    extracted_agg.extend(
+                        _extract_tasks_with_llm(
+                            sc,
+                            meeting_catalog_text,
+                            latest_meeting_id,
+                            meeting_ref_dates,
+                            valid_meeting_ids,
+                            ordinal_by_meeting_id,
+                        )
+                    )
+                except Exception as e:
+                    logger.exception(
+                        "Task extraction failed project_id=%s cumulative chunk (len=%s): %s",
+                        project_id,
+                        len(sc),
+                        e,
+                    )
 
     extracted = _dedup_extracted_global(extracted_agg)
     extracted = [t for t in extracted if (t.assignee or "").strip()]
@@ -1044,8 +1094,10 @@ async def rebuild_kanban_from_meeting_history(
             "updated_at": now,
         }
         ins = await db.tasks.insert_one(new_doc)
+        row = {**new_doc, "_id": ins.inserted_id}
+        row["task_key"] = await ensure_task_key_persisted(db, row)
         created += 1
-        existing.append({**new_doc, "_id": ins.inserted_id})
+        existing.append(row)
         actions_taken.append({"task": item.title, "action": "created"})
         if item.blockers:
             await db.kanban_task_activity.insert_one(
@@ -1067,6 +1119,18 @@ async def rebuild_kanban_from_meeting_history(
         board_rows = [dict(x) for x in board_rows]
         snap = _board_snapshot_for_llm(board_rows)
         lt_send = latest_meeting_cleaned
+        if bool(getattr(settings, "KANBAN_RAG_BOARD_SYNC_ENABLED", True)):
+            try:
+                from app.services.kanban_transcript_rag import retrieve_board_sync_context
+
+                rag_ctx, rag_sc = retrieve_board_sync_context(
+                    latest_meeting_id, latest_meeting_cleaned
+                )
+                min_sim = float(getattr(settings, "KANBAN_RAG_MIN_SIMILARITY", 0.22) or 0.0)
+                if (rag_ctx or "").strip() and rag_sc >= min_sim and len((rag_ctx or "").strip()) > 200:
+                    lt_send = rag_ctx.strip()
+            except Exception as e:
+                logger.warning("Board sync RAG skipped, using full latest transcript: %s", e)
         if len(lt_send) > 120_000:
             lt_send = lt_send[:120_000]
         try:

@@ -7,6 +7,16 @@ from typing import List, Union, Optional
 _BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 _ENV_FILE = _BACKEND_DIR / ".env"
 
+# Ensure variables are in os.environ before Settings() (uvicorn --reload workers may not run run.py)
+if _ENV_FILE.exists():
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(_ENV_FILE, override=True)
+    except ImportError:
+        pass
+
+
 class Settings(BaseSettings):
     # MongoDB
     MONGODB_URL: str = "mongodb://localhost:27017"
@@ -16,14 +26,47 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = "your-secret-key-change-in-production"
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    
+
+    # Frontend URL (password reset links, etc.)
+    FRONTEND_BASE_URL: str = "http://localhost:5173"
+    # Dev: return reset token in API JSON instead of email (disable in production)
+    PASSWORD_RESET_RETURN_TOKEN: bool = False
+    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 60
+
+    # Optional SMTP for forgot-password emails (set SMTP_HOST to enable)
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = ""
+    SMTP_USE_TLS: bool = True
+
     # Groq API (for Whisper transcription). Get a key at https://console.groq.com
     GROQ_API_KEY: str = ""
     TASK_AUTOMATION_PROVIDER: str = "groq"  # groq | gemini
     TASK_AUTOMATION_MODEL: str = "llama-3.3-70b-versatile"
     TASK_AUTOMATION_MATCH_THRESHOLD: float = 0.78
     TASK_AUTOMATION_LOW_CONFIDENCE_THRESHOLD: float = 0.60
-    
+    # Groq chat completion caps for Kanban (input + max_tokens must fit tier TPM)
+    TASK_AUTOMATION_EXTRACT_MAX_TOKENS: int = 3072
+    TASK_AUTOMATION_BOARD_SYNC_MAX_TOKENS: int = 2048
+
+    # Kanban: retrieve small transcript context via embeddings + FAISS (set false to use legacy char chunks)
+    KANBAN_RAG_ENABLED: bool = True
+    KANBAN_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+    KANBAN_RAG_CHUNK_WORDS: int = 250
+    KANBAN_RAG_CHUNK_OVERLAP_WORDS: int = 40
+    KANBAN_RAG_TOP_K: int = 5
+    KANBAN_RAG_MAX_CONTEXT_CHARS: int = 12000
+    KANBAN_RAG_MIN_SIMILARITY: float = 0.22
+    KANBAN_RAG_LATEST_MEETING_SCORE_BOOST: float = 1.12
+    # Comma-separated retrieval queries (empty = use built-in defaults)
+    KANBAN_RAG_QUERIES: str = ""
+    KANBAN_RAG_FALLBACK_TAIL_CHARS: int = 8000
+    # Board-sync RAG: retrieve from latest meeting only
+    KANBAN_RAG_BOARD_SYNC_ENABLED: bool = True
+    KANBAN_RAG_BOARD_MAX_TRANSCRIPT_CHARS: int = 10000
+
     # CORS - accept list or comma-separated / JSON string from env
     CORS_ORIGINS: List[str] = [
         "http://localhost:5173",
@@ -34,6 +77,12 @@ class Settings(BaseSettings):
         "http://127.0.0.1:8080",
     ]
     
+    # GitHub → Kanban webhooks (signature required; leave secret empty to reject all deliveries)
+    GITHUB_WEBHOOK_SECRET: str = ""
+    GITHUB_TASK_KEY_PREFIX: str = "MM"
+    GITHUB_PAT: str = ""
+    GITHUB_REQUIRE_PR_MERGE_FOR_DONE: bool = True
+
     # Server
     HOST: str = "0.0.0.0"
     PORT: int = 8000
@@ -52,6 +101,8 @@ class Settings(BaseSettings):
     AUDIO_INPUT_DEVICE: Optional[Union[int, str]] = None
     # STT buffer seconds before calling Whisper (smaller = faster first transcript, more API calls)
     STT_BUFFER_SECONDS: float = 5.0
+    # Minimum seconds between Whisper API calls (pacing / rate limits)
+    STT_MIN_INTERVAL_SECONDS: float = 1.5
     # Accuracy-first mode keeps more context and can increase transcript delay.
     STT_ACCURACY_MODE: bool = True
     # Default Whisper model for streaming chunks.

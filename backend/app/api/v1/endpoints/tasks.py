@@ -4,6 +4,7 @@ from app.core.database import get_database
 from app.core.dependencies import get_current_user, verify_project_membership
 from app.models.task import Task, TaskCreate, TaskUpdate
 from app.models.user import User
+from app.services.task_key import ensure_task_key_persisted
 from bson import ObjectId
 from datetime import datetime
 
@@ -23,6 +24,14 @@ def _task_doc_to_model(d: dict) -> Task:
     d["status"] = _normalize_status(d.get("status"))
     d.pop("copilot_created", None)
     return Task(**{k: v for k, v in d.items() if k != "_id"})
+
+
+async def task_with_key(db, d: dict) -> Task:
+    """Ensure task_key is stored (lazy backfill) before building the response model."""
+    doc = dict(d)
+    if doc.get("_id") is not None and not (doc.get("task_key") or "").strip():
+        doc["task_key"] = await ensure_task_key_persisted(db, doc)
+    return _task_doc_to_model(doc)
 
 
 def apply_assignee_change_timestamp(task: dict, update_data: dict) -> None:
@@ -87,7 +96,7 @@ async def list_tasks(
         query["status"] = status
     
     tasks = await db.tasks.find(query).sort("created_at", -1).to_list(length=100)
-    return [_task_doc_to_model(t) for t in tasks]
+    return [await task_with_key(db, t) for t in tasks]
 
 @router.get("/{task_id}", response_model=Task)
 async def get_task(task_id: str, current_user: User = Depends(get_current_user)):
@@ -101,7 +110,7 @@ async def get_task(task_id: str, current_user: User = Depends(get_current_user))
     # Verify project access
     await verify_project_membership(task["project_id"], current_user)
     
-    return _task_doc_to_model(task)
+    return await task_with_key(db, task)
 
 @router.patch("/{task_id}", response_model=Task)
 async def update_task(
@@ -133,7 +142,7 @@ async def update_task(
     )
     
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
-    return _task_doc_to_model(updated)
+    return await task_with_key(db, updated)
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_task(task_id: str, current_user: User = Depends(get_current_user)):
