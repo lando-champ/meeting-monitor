@@ -1,3 +1,6 @@
+import asyncio
+from typing import Optional
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
@@ -36,6 +39,27 @@ app.add_middleware(CORSPreflightMiddleware, allow_origins=_cors_origins)
 # Include routers
 app.include_router(api_router, prefix="/api/v1")
 
+_stale_sweep_bg_task: Optional[asyncio.Task] = None
+
+
+async def _run_periodic_stale_sweep(interval_hours: int) -> None:
+    from app.core.database import get_database
+    from app.services.task_stale_detection import mark_stale_tasks_all_projects
+
+    interval_sec = max(60, int(interval_hours) * 3600)
+    while True:
+        try:
+            db = await get_database()
+            r = await mark_stale_tasks_all_projects(db)
+            if r.get("marked"):
+                print(f"✅ stale task sweep: marked {r.get('marked')} task(s)")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            print("⚠️ stale task sweep failed:", e)
+        await asyncio.sleep(interval_sec)
+
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize database connection on startup."""
@@ -56,9 +80,25 @@ async def startup_event():
         print("⚠️ GROQ_API_KEY missing in backend/.env — live transcription disabled. Get a key at https://console.groq.com")
     await init_db()
 
+    global _stale_sweep_bg_task
+    bg_h = int(getattr(settings, "STALE_TASK_BACKGROUND_INTERVAL_HOURS", 0) or 0)
+    if bg_h > 0:
+        _stale_sweep_bg_task = asyncio.create_task(_run_periodic_stale_sweep(bg_h))
+        print(
+            f"✅ Stale task background sweep scheduled every {bg_h}h "
+            "(requires STALE_TASK_AUTO_BLOCKERS_ENABLED=true to mark tasks)"
+        )
+
 @app.on_event("shutdown")
 async def shutdown_event():
     """Close database connection on shutdown"""
+    global _stale_sweep_bg_task
+    if _stale_sweep_bg_task and not _stale_sweep_bg_task.done():
+        _stale_sweep_bg_task.cancel()
+        try:
+            await _stale_sweep_bg_task
+        except asyncio.CancelledError:
+            pass
     from app.core.database import close_db
     await close_db()
 

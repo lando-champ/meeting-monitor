@@ -18,6 +18,7 @@ from app.api.v1.endpoints.tasks import task_with_key, _normalize_status, apply_a
 from bson import ObjectId
 from pymongo.errors import DuplicateKeyError, OperationFailure
 from app.services.kanban_agentic_automation import rebuild_kanban_from_meeting_history
+from app.services.task_stale_detection import mark_stale_tasks_in_project
 from app.services.workspace_copilot import run_workspace_copilot
 
 router = APIRouter()
@@ -88,6 +89,7 @@ async def get_project(
 ):
     """Get project by ID with member details and Kairox board tasks."""
     db = await get_database()
+    await mark_stale_tasks_in_project(db, project_id)
     project_out = await _project_to_out(db, {**project, "_id": project["_id"]})
     meetings = await db.meetings.find({"project_id": project_id}, {"_id": 1}).to_list(length=5000)
     valid_meeting_ids = [str(m["_id"]) for m in meetings]
@@ -143,6 +145,7 @@ async def update_project_task(
         update_data["completed_at"] = datetime.utcnow()
     apply_assignee_change_timestamp(task, update_data)
     update_data["updated_at"] = datetime.utcnow()
+    update_data["last_activity_at"] = datetime.utcnow()
     await db.tasks.update_one({"_id": oid}, {"$set": update_data})
     updated = await db.tasks.find_one({"_id": oid})
     return await task_with_key(db, updated)

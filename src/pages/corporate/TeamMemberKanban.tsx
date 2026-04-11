@@ -74,6 +74,11 @@ function apiTaskToTask(a: ApiTask): Task {
     completedAt: a.completed_at ? new Date(a.completed_at) : undefined,
     task_key: a.task_key ?? undefined,
     git_evidence: a.git_evidence ?? undefined,
+    github_ci_head_sha: a.github_ci_head_sha ?? undefined,
+    github_ci_conclusion: a.github_ci_conclusion ?? undefined,
+    github_ci_updated_at: a.github_ci_updated_at ?? undefined,
+    github_ci_workflow_run_id: a.github_ci_workflow_run_id ?? undefined,
+    github_ci_workflow_url: a.github_ci_workflow_url ?? undefined,
   };
 }
 
@@ -323,7 +328,14 @@ const TeamMemberKanban = () => {
                   </span>
                 )}
               </div>
-              <TaskGitReference variant="card" taskKey={task.task_key} />
+              <TaskGitReference
+                variant="card"
+                taskKey={task.task_key}
+                githubCiConclusion={task.github_ci_conclusion}
+                githubCiUpdatedAt={task.github_ci_updated_at}
+                githubCiWorkflowUrl={task.github_ci_workflow_url}
+                githubCiHeadSha={task.github_ci_head_sha}
+              />
             </div>
           </div>
         </CardContent>
@@ -480,6 +492,10 @@ const TeamMemberKanban = () => {
                 taskKey={dialogTask.task_key}
                 gitEvidence={dialogTask.git_evidence}
                 commitTitle={dTitle}
+                githubCiConclusion={dialogTask.github_ci_conclusion}
+                githubCiUpdatedAt={dialogTask.github_ci_updated_at}
+                githubCiWorkflowUrl={dialogTask.github_ci_workflow_url}
+                githubCiHeadSha={dialogTask.github_ci_head_sha}
               />
               <div className="space-y-2">
                 <Label htmlFor="tmkd-title">Title</Label>

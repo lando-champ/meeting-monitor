@@ -102,6 +102,11 @@ export interface Task {
   /** Stable ID for Git PR/commit references (e.g. MM-AB12CD34). */
   task_key?: string | null;
   git_evidence?: TaskGitEvidenceEntry[] | null;
+  github_ci_head_sha?: string | null;
+  github_ci_conclusion?: string | null;
+  github_ci_updated_at?: string | null;
+  github_ci_workflow_run_id?: number | null;
+  github_ci_workflow_url?: string | null;
 }
 
 // Kanban Types

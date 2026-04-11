@@ -10,6 +10,8 @@ import {
   Clock,
   UserCircle,
   Trash2,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -22,6 +24,8 @@ import {
   getMeetingDetail,
   startMeeting,
   stopMeeting,
+  pauseMeetingBotAudio,
+  resumeMeetingBotAudio,
   generateMeetingSummary,
   deleteMeeting,
   type MeetingBotDetail,
@@ -53,6 +57,8 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
   const [generatingSummary, setGeneratingSummary] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [pausingBotAudio, setPausingBotAudio] = useState(false);
+  const [resumingBotAudio, setResumingBotAudio] = useState(false);
 
   const basePath =
     role === "manager"
@@ -122,6 +128,32 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
     }
   };
 
+  const handlePauseBotAudio = async () => {
+    if (!token || !meetingId) return;
+    setPausingBotAudio(true);
+    try {
+      await pauseMeetingBotAudio(token, meetingId);
+      loadDetail();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setPausingBotAudio(false);
+    }
+  };
+
+  const handleResumeBotAudio = async () => {
+    if (!token || !meetingId) return;
+    setResumingBotAudio(true);
+    try {
+      await resumeMeetingBotAudio(token, meetingId);
+      loadDetail();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setResumingBotAudio(false);
+    }
+  };
+
   const handleGenerateSummary = async () => {
     if (!token || !meetingId) return;
     setGeneratingSummary(true);
@@ -158,6 +190,8 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
       action_items,
       total_participants = 0,
       total_duration,
+      bot_running = false,
+      bot_audio_streaming = false,
     } = apiDetail;
     const isLive = meeting.status === "live";
     const isScheduled = meeting.status === "scheduled";
@@ -197,6 +231,26 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
               <Button variant="destructive" size="sm" disabled={stopping} onClick={handleStopMeeting}>
                 {stopping ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Square className="h-4 w-4 mr-2" />}
                 Stop meeting
+              </Button>
+            )}
+            {isLive && bot_running && bot_audio_streaming && (
+              <Button variant="outline" size="sm" disabled={pausingBotAudio} onClick={handlePauseBotAudio}>
+                {pausingBotAudio ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <VolumeX className="h-4 w-4 mr-2" />
+                )}
+                Pause system audio
+              </Button>
+            )}
+            {isLive && bot_running && !bot_audio_streaming && (
+              <Button variant="outline" size="sm" disabled={resumingBotAudio} onClick={handleResumeBotAudio}>
+                {resumingBotAudio ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Volume2 className="h-4 w-4 mr-2" />
+                )}
+                Resume system audio
               </Button>
             )}
             <Button
@@ -358,9 +412,19 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
                       <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
                       Live transcript
                     </CardTitle>
-                    <CardDescription>Real-time transcription. Join the meeting and speak to see text here.</CardDescription>
+                    <CardDescription>
+                      Server path uses Groq on the machine running the API (system/loopback capture from the bot).
+                      Use Pause system audio in the header to stop that stream without ending the meeting. Browser
+                      mic uses Web Speech locally in your browser only.
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
+                    {!bot_running && (
+                      <p className="text-xs text-muted-foreground mb-3">
+                        No bot registered on this API host (e.g. dev without Selenium). Pause/resume applies when the
+                        meeting bot is running here.
+                      </p>
+                    )}
                     <LiveMeetingTranscript meetingId={meetingId} />
                   </CardContent>
                 </Card>

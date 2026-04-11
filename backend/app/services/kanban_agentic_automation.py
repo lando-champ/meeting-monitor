@@ -1047,7 +1047,7 @@ async def rebuild_kanban_from_meeting_history(
                 if new_desc != (match.get("description") or "").strip():
                     updates["description"] = new_desc
             had_field_changes = bool(updates)
-            set_doc = {**updates, "updated_at": now}
+            set_doc = {**updates, "updated_at": now, "last_activity_at": now}
             add_each = [x for x in sync_ids if x]
             await db.tasks.update_one(
                 {"_id": match["_id"]},
@@ -1092,6 +1092,7 @@ async def rebuild_kanban_from_meeting_history(
             "is_auto_generated": True,
             "created_at": now,
             "updated_at": now,
+            "last_activity_at": now,
         }
         ins = await db.tasks.insert_one(new_doc)
         row = {**new_doc, "_id": ins.inserted_id}
@@ -1202,7 +1203,7 @@ async def rebuild_kanban_from_meeting_history(
                 continue
 
             had_field_updates = bool(updates2)
-            set_doc2 = {**updates2, "updated_at": now}
+            set_doc2 = {**updates2, "updated_at": now, "last_activity_at": now}
             await db.tasks.update_one(
                 {"_id": oid},
                 {"$set": set_doc2, "$addToSet": {"synced_from_meeting_ids": {"$each": add_mids}}},

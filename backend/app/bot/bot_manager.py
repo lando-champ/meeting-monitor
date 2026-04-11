@@ -18,6 +18,12 @@ _trackers: Dict[str, AttendanceTracker] = {}
 _lock = asyncio.Lock()
 
 
+def _audio_callback_url(meeting_id: str) -> str:
+    backend_url = settings.BACKEND_URL or f"http://localhost:{settings.PORT}"
+    ws_url = backend_url.replace("http://", "ws://").replace("https://", "wss://").rstrip("/")
+    return ws_url + "/api/v1/ws/audio/" + meeting_id
+
+
 async def _safe_audio_stream(meeting_id: str, bot: JitsiMeetBot, callback_url: str) -> None:
     """Run bot.start_audio_stream; reconnect on disconnect."""
     try:
@@ -59,9 +65,7 @@ class BotManager:
         async with _lock:
             if meeting_id in _bots:
                 return
-            backend_url = settings.BACKEND_URL or f"http://localhost:{settings.PORT}"
-            ws_url = backend_url.replace("http://", "ws://").replace("https://", "wss://").rstrip("/")
-            callback_url = ws_url + "/api/v1/ws/audio/" + meeting_id
+            callback_url = _audio_callback_url(meeting_id)
             bot = JitsiMeetBot(meeting_id)
             _bots[meeting_id] = bot
             tracker = AttendanceTracker(meeting_id)
@@ -88,6 +92,55 @@ class BotManager:
             await tracker.record_leave("bot")
         if bot:
             await bot.leave_meeting()
+
+    def is_bot_running(self, meeting_id: str) -> bool:
+        return meeting_id in _bots
+
+    def is_bot_audio_streaming(self, meeting_id: str) -> bool:
+        t = _tasks.get(meeting_id)
+        return t is not None and not t.done()
+
+    async def pause_bot_audio(self, meeting_id: str) -> None:
+        """Stop system-audio capture and WS stream; keep Selenium/Jitsi session."""
+        async with _lock:
+            if meeting_id not in _bots:
+                raise ValueError("no_bot_for_meeting")
+            bot = _bots[meeting_id]
+            task = _tasks.pop(meeting_id, None)
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, bot.stop_audio_capture_sync)
+
+    async def resume_bot_audio(self, meeting_id: str) -> None:
+        """Restart audio stream for an existing bot (after pause)."""
+        async with _lock:
+            if meeting_id not in _bots:
+                raise ValueError("no_bot_for_meeting")
+            existing = _tasks.get(meeting_id)
+            if existing is not None and not existing.done():
+                return
+            bot = _bots[meeting_id]
+            callback_url = _audio_callback_url(meeting_id)
+        ws_manager.ensure_pipeline(meeting_id)
+        new_task = asyncio.create_task(_safe_audio_stream(meeting_id, bot, callback_url))
+        cancelled_dup = False
+        async with _lock:
+            cur = _tasks.get(meeting_id)
+            if cur is not None and not cur.done():
+                new_task.cancel()
+                cancelled_dup = True
+            else:
+                _tasks[meeting_id] = new_task
+        if cancelled_dup:
+            try:
+                await new_task
+            except asyncio.CancelledError:
+                pass
 
 
 bot_manager = BotManager()

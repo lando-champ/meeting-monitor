@@ -23,3 +23,4 @@ websockets
 # Kanban RAG (local embeddings + FAISS)
 faiss-cpu
 sentence-transformers
+pytest

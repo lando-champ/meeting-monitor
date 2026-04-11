@@ -75,6 +75,7 @@ async def sync_tasks_to_kairox(project_id: str) -> None:
                 update["source_meeting_id"] = meeting_id
             if update:
                 update["updated_at"] = now
+                update["last_activity_at"] = now
                 await db.tasks.update_one({"_id": similar["_id"]}, {"$set": update})
             continue
         else:
@@ -91,6 +92,7 @@ async def sync_tasks_to_kairox(project_id: str) -> None:
                 "is_auto_generated": True,
                 "created_at": now,
                 "updated_at": now,
+                "last_activity_at": now,
             }
             result = await db.tasks.insert_one(new_doc)
             row = {**new_doc, "_id": result.inserted_id}

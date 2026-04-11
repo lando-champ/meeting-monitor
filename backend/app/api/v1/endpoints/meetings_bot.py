@@ -31,6 +31,29 @@ def set_bot_manager(manager):
     _bot_manager = manager
 
 
+async def _meeting_for_bot_audio_ops(
+    meeting_id: str,
+    current_user: User,
+) -> dict:
+    """Load meeting, verify membership, require live status for pause/resume audio."""
+    db = await get_database()
+    try:
+        oid = ObjectId(meeting_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid meeting ID")
+    meeting = await db.meetings.find_one({"_id": oid})
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    if meeting.get("project_id"):
+        await verify_project_membership(meeting["project_id"], current_user)
+    if meeting.get("status") != "live":
+        raise HTTPException(
+            status_code=400,
+            detail="Meeting must be live to pause or resume bot system audio",
+        )
+    return meeting
+
+
 def _doc_to_meeting(doc: dict) -> dict:
     return {
         "id": str(doc["_id"]),
@@ -152,8 +175,13 @@ async def get_meeting(
     except (TypeError, AttributeError):
         pass
 
+    bot_running = bool(_bot_manager and _bot_manager.is_bot_running(meeting_id))
+    bot_audio_streaming = bool(_bot_manager and _bot_manager.is_bot_audio_streaming(meeting_id))
+
     return {
         "meeting": _doc_to_meeting(meeting),
+        "bot_running": bot_running,
+        "bot_audio_streaming": bot_audio_streaming,
         "transcript_segments": [{"text": s.get("text"), "timestamp": s.get("timestamp")} for s in segments],
         "transcripts": [{"text": t.get("text"), "timestamp": t.get("timestamp")} for t in transcripts],
         "attendance": [
@@ -227,6 +255,52 @@ async def ask_about_meeting(
         raise HTTPException(status_code=502, detail="Assistant failed to respond")
 
     return {"answer": answer, "meeting_id": meeting_id}
+
+
+@router.post("/{meeting_id}/bot/audio/pause", status_code=status.HTTP_200_OK)
+async def pause_bot_system_audio(
+    meeting_id: str,
+    current_user: User = Depends(get_current_active_user),
+):
+    """Stop server system-audio capture to Groq pipeline; bot stays in the meeting."""
+    await _meeting_for_bot_audio_ops(meeting_id, current_user)
+    if not _bot_manager:
+        raise HTTPException(status_code=503, detail="Meeting bot is not available on this server")
+    try:
+        await _bot_manager.pause_bot_audio(meeting_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="No meeting bot is running on this server for this meeting",
+        )
+    return {
+        "message": "Bot system audio paused",
+        "meeting_id": meeting_id,
+        "bot_audio_streaming": _bot_manager.is_bot_audio_streaming(meeting_id),
+    }
+
+
+@router.post("/{meeting_id}/bot/audio/resume", status_code=status.HTTP_200_OK)
+async def resume_bot_system_audio(
+    meeting_id: str,
+    current_user: User = Depends(get_current_active_user),
+):
+    """Resume server system-audio stream after pause."""
+    await _meeting_for_bot_audio_ops(meeting_id, current_user)
+    if not _bot_manager:
+        raise HTTPException(status_code=503, detail="Meeting bot is not available on this server")
+    try:
+        await _bot_manager.resume_bot_audio(meeting_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="No meeting bot is running on this server for this meeting",
+        )
+    return {
+        "message": "Bot system audio resumed",
+        "meeting_id": meeting_id,
+        "bot_audio_streaming": _bot_manager.is_bot_audio_streaming(meeting_id),
+    }
 
 
 @router.post("/{meeting_id}/start", status_code=status.HTTP_200_OK)

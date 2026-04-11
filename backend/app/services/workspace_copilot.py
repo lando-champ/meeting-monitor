@@ -303,6 +303,7 @@ Rules:
                     "copilot_created": True,
                     "created_at": now,
                     "updated_at": now,
+                    "last_activity_at": now,
                     "completed_at": None,
                 }
                 await db.tasks.insert_one(doc)
@@ -328,7 +329,7 @@ Rules:
                 existing = await db.tasks.find_one({"_id": toid, "project_id": project_id})
                 if not existing:
                     continue
-                patch = {"status": st, "updated_at": now}
+                patch = {"status": st, "updated_at": now, "last_activity_at": now}
                 if st == "done":
                     patch["completed_at"] = now
                 await db.tasks.update_one({"_id": toid}, {"$set": patch})

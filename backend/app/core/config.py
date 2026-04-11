@@ -82,6 +82,16 @@ class Settings(BaseSettings):
     GITHUB_TASK_KEY_PREFIX: str = "MM"
     GITHUB_PAT: str = ""
     GITHUB_REQUIRE_PR_MERGE_FOR_DONE: bool = True
+    # If true, merged PRs mark DONE only when github_ci_* matches PR head SHA with conclusion success
+    GITHUB_REQUIRE_CI_SUCCESS_FOR_DONE: bool = False
+    # Comma-separated workflow names; empty = all workflows (workflow_run events)
+    GITHUB_CI_WORKFLOW_NAME_ALLOWLIST: str = ""
+
+    # Stale tasks: auto-move to blockers after inactivity (optional)
+    STALE_TASK_AUTO_BLOCKERS_ENABLED: bool = False
+    STALE_TASK_INACTIVITY_DAYS: int = 3
+    # 0 = off; else run mark_stale_tasks_all_projects every N hours in background
+    STALE_TASK_BACKGROUND_INTERVAL_HOURS: int = 0
 
     # Server
     HOST: str = "0.0.0.0"

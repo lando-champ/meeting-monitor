@@ -137,6 +137,10 @@ export function getWsBaseUrl(): string {
 
 export interface MeetingBotDetail {
   meeting: { id: string; project_id?: string; title?: string; status: string; meeting_url?: string; started_at?: string; ended_at?: string };
+  /** True when this API process has a bot process for the meeting (in-memory). */
+  bot_running?: boolean;
+  /** True when PCM is actively streaming from the bot to the STT pipeline. */
+  bot_audio_streaming?: boolean;
   transcript_segments: { text: string; timestamp: string }[];
   transcripts: { text: string; timestamp: string }[];
   attendance: {
@@ -203,6 +207,36 @@ export async function stopMeeting(
     headers: getAuthHeaders(token),
   });
   if (!res.ok) throw new Error("Failed to stop meeting");
+  return res.json();
+}
+
+export async function pauseMeetingBotAudio(
+  token: string,
+  meetingId: string
+): Promise<{ message: string; meeting_id: string; bot_audio_streaming: boolean }> {
+  const res = await fetch(`${apiBaseUrl}/api/v1/meetings/${meetingId}/bot/audio/pause`, {
+    method: "POST",
+    headers: getAuthHeaders(token),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(typeof err.detail === "string" ? err.detail : "Failed to pause bot audio");
+  }
+  return res.json();
+}
+
+export async function resumeMeetingBotAudio(
+  token: string,
+  meetingId: string
+): Promise<{ message: string; meeting_id: string; bot_audio_streaming: boolean }> {
+  const res = await fetch(`${apiBaseUrl}/api/v1/meetings/${meetingId}/bot/audio/resume`, {
+    method: "POST",
+    headers: getAuthHeaders(token),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(typeof err.detail === "string" ? err.detail : "Failed to resume bot audio");
+  }
   return res.json();
 }
 
@@ -381,6 +415,11 @@ export interface ApiTask {
   /** Reference in PR/commit messages (e.g. MM-AB12CD34). */
   task_key?: string | null;
   git_evidence?: ApiGitEvidenceEntry[] | null;
+  github_ci_head_sha?: string | null;
+  github_ci_conclusion?: string | null;
+  github_ci_updated_at?: string | null;
+  github_ci_workflow_run_id?: number | null;
+  github_ci_workflow_url?: string | null;
 }
 
 export interface ApiProjectWithTasks extends ApiProject {

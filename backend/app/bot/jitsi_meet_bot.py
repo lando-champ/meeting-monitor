@@ -98,12 +98,27 @@ class JitsiMeetBot(BaseBot):
             pass
         return True
 
+    def _cleanup_audio_capture_resources(self) -> None:
+        """Stop sounddevice capture and clear references (does not close Selenium)."""
+        self._running = False
+        if self._capture:
+            try:
+                self._capture.stop()
+            except Exception:
+                pass
+            self._capture = None
+
+    def stop_audio_capture_sync(self) -> None:
+        """Sync stop for use from BotManager pause path; safe if already stopped."""
+        self._cleanup_audio_capture_resources()
+
     async def start_audio_stream(self, callback_url: str) -> None:
         """Run capture in thread; in async loop send chunks over WebSocket.
         Uses AUDIO_INPUT_DEVICE when set (e.g. 'Stereo Mix') so bot captures system audio
         for Groq transcription instead of the microphone."""
         import logging
         import websockets
+
         log = logging.getLogger(__name__)
         device = getattr(settings, "AUDIO_INPUT_DEVICE", None)
         self._capture = SystemAudioCapture(device=device)
@@ -111,32 +126,38 @@ class JitsiMeetBot(BaseBot):
             self._capture.start()
         except Exception as e:
             log.exception("Audio capture start failed: %s", e)
+            self._cleanup_audio_capture_resources()
             raise RuntimeError(f"Audio capture start failed: {e}") from e
         self._running = True
-        # Continuous non-blocking loop: reconnect on failures, keep sending audio frames.
-        while self._running:
-            try:
-                async with websockets.connect(callback_url) as ws:
-                    log.info("Bot connected to audio callback %s", callback_url)
-                    chunk_count = 0
-                    while self._running:
-                        try:
-                            # Small timeout so we can detect stalled capture and keep WS alive.
-                            chunk = await asyncio.wait_for(self._capture.get_audio_chunk(), timeout=5.0)
-                        except asyncio.TimeoutError:
-                            # Heartbeat to keep connection open even if capture is briefly silent.
-                            await ws.send(b"")
-                            continue
-                        if chunk:
-                            await ws.send(chunk)
-                            chunk_count += 1
-                            if chunk_count == 1:
-                                log.debug("First audio chunk sent for meeting %s", self.meeting_id)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                log.warning("Audio WebSocket disconnected, reconnecting in 2s: %s", e)
-                await asyncio.sleep(2)
+        try:
+            # Continuous non-blocking loop: reconnect on failures, keep sending audio frames.
+            while self._running:
+                try:
+                    async with websockets.connect(callback_url) as ws:
+                        log.info("Bot connected to audio callback %s", callback_url)
+                        chunk_count = 0
+                        while self._running:
+                            try:
+                                # Small timeout so we can detect stalled capture and keep WS alive.
+                                chunk = await asyncio.wait_for(
+                                    self._capture.get_audio_chunk(), timeout=5.0
+                                )
+                            except asyncio.TimeoutError:
+                                # Heartbeat to keep connection open even if capture is briefly silent.
+                                await ws.send(b"")
+                                continue
+                            if chunk:
+                                await ws.send(chunk)
+                                chunk_count += 1
+                                if chunk_count == 1:
+                                    log.debug("First audio chunk sent for meeting %s", self.meeting_id)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    log.warning("Audio WebSocket disconnected, reconnecting in 2s: %s", e)
+                    await asyncio.sleep(2)
+        finally:
+            self._cleanup_audio_capture_resources()
 
     def get_participants(self) -> List[Tuple[str, str]]:
         if not self._driver:
@@ -157,10 +178,7 @@ class JitsiMeetBot(BaseBot):
             return []
 
     async def leave_meeting(self) -> None:
-        self._running = False
-        if self._capture:
-            self._capture.stop()
-            self._capture = None
+        self._cleanup_audio_capture_resources()
         if self._driver:
             try:
                 self._driver.quit()

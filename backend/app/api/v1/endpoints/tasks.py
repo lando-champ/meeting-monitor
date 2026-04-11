@@ -135,7 +135,8 @@ async def update_task(
         update_data["completed_at"] = datetime.utcnow()
     apply_assignee_change_timestamp(task, update_data)
     update_data["updated_at"] = datetime.utcnow()
-    
+    update_data["last_activity_at"] = datetime.utcnow()
+
     await db.tasks.update_one(
         {"_id": ObjectId(task_id)},
         {"$set": update_data}

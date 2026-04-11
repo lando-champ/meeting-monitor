@@ -70,9 +70,17 @@ class Task(TaskBase):
     created_at: datetime
     updated_at: datetime
     completed_at: Optional[datetime] = None
+    # Last “progress” signal (user edit, Git, meeting sync touching this task); used for stale → blockers
+    last_activity_at: Optional[datetime] = None
     # Reference in Git: PREFIX-XXXXXXXX (see task_key service)
     task_key: Optional[str] = None
     git_evidence: Optional[List[Dict[str, Any]]] = None
+    # Last GitHub Actions workflow_run conclusion for PR head (CI gate)
+    github_ci_head_sha: Optional[str] = None
+    github_ci_conclusion: Optional[str] = None
+    github_ci_updated_at: Optional[datetime] = None
+    github_ci_workflow_run_id: Optional[int] = None
+    github_ci_workflow_url: Optional[str] = None
 
     class Config:
         from_attributes = True
