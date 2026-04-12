@@ -10,6 +10,8 @@ class MemberInfo(BaseModel):
     id: str
     name: str
     email: str
+    # User account role (e.g. job title from signup/profile), not workspace Owner/Member.
+    role: str = ""
 
 
 class ProjectBase(BaseModel):

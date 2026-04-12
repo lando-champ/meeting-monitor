@@ -4,16 +4,13 @@ import {
   CheckSquare,
   MessageSquare,
   ExternalLink,
-  Bot,
   Square,
   Loader2,
   Clock,
   UserCircle,
   Trash2,
-  Volume2,
-  VolumeX,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,15 +19,15 @@ import { format } from "date-fns";
 import { useAuth } from "@/context/AuthContext";
 import {
   getMeetingDetail,
-  startMeeting,
   stopMeeting,
-  pauseMeetingBotAudio,
-  resumeMeetingBotAudio,
+  appendBrowserTranscriptSegments,
   generateMeetingSummary,
   deleteMeeting,
   type MeetingBotDetail,
 } from "@/lib/api";
-import LiveMeetingTranscript from "@/components/meeting/LiveMeetingTranscript";
+import LiveMeetingTranscript, {
+  type LiveMeetingTranscriptRef,
+} from "@/components/meeting/LiveMeetingTranscript";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,12 +50,10 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
   const [apiDetail, setApiDetail] = useState<MeetingBotDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [stopping, setStopping] = useState(false);
-  const [starting, setStarting] = useState(false);
   const [generatingSummary, setGeneratingSummary] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [pausingBotAudio, setPausingBotAudio] = useState(false);
-  const [resumingBotAudio, setResumingBotAudio] = useState(false);
+  const transcriptRef = useRef<LiveMeetingTranscriptRef>(null);
 
   const basePath =
     role === "manager"
@@ -84,17 +79,6 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
       .finally(() => setLoading(false));
   }, [meetingId, token]);
 
-  // When just opened with status "scheduled", poll a few times so we pick up "live" as soon as the meeting starts
-  useEffect(() => {
-    if (!apiDetail || apiDetail.meeting.status !== "scheduled" || !meetingId || !token) return;
-    const t1 = setTimeout(loadDetail, 1500);
-    const t2 = setTimeout(loadDetail, 4000);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-    };
-  }, [apiDetail?.meeting.status, meetingId, token]);
-
   // Poll when live to refresh attendance/status
   useEffect(() => {
     if (!apiDetail || apiDetail.meeting.status !== "live" || !meetingId || !token) return;
@@ -102,55 +86,21 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
     return () => clearInterval(interval);
   }, [apiDetail?.meeting.status, meetingId, token]);
 
-  const handleStartBot = async () => {
-    if (!token || !meetingId || !apiDetail?.meeting.meeting_url) return;
-    setStarting(true);
-    try {
-      await startMeeting(token, meetingId, {
-        meeting_url: apiDetail.meeting.meeting_url,
-        project_id: apiDetail.meeting.project_id,
-        title: apiDetail.meeting.title,
-      });
-      loadDetail();
-    } finally {
-      setStarting(false);
-    }
-  };
-
   const handleStopMeeting = async () => {
     if (!token || !meetingId) return;
     setStopping(true);
     try {
+      const toSave = transcriptRef.current?.collectTextsForSave() ?? [];
+      if (toSave.length > 0) {
+        await appendBrowserTranscriptSegments(token, meetingId, toSave);
+      }
       await stopMeeting(token, meetingId);
       loadDetail();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Could not end meeting";
+      window.alert(msg);
     } finally {
       setStopping(false);
-    }
-  };
-
-  const handlePauseBotAudio = async () => {
-    if (!token || !meetingId) return;
-    setPausingBotAudio(true);
-    try {
-      await pauseMeetingBotAudio(token, meetingId);
-      loadDetail();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setPausingBotAudio(false);
-    }
-  };
-
-  const handleResumeBotAudio = async () => {
-    if (!token || !meetingId) return;
-    setResumingBotAudio(true);
-    try {
-      await resumeMeetingBotAudio(token, meetingId);
-      loadDetail();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setResumingBotAudio(false);
     }
   };
 
@@ -180,7 +130,6 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
   const toPercent = (value?: number) =>
     `${Math.round(Math.max(0, Math.min(1, value ?? 0)) * 100)}%`;
 
-  // API-driven bot meeting UI (Vyimayi-style tabs)
   if (!loading && apiDetail) {
     const {
       meeting,
@@ -190,11 +139,8 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
       action_items,
       total_participants = 0,
       total_duration,
-      bot_running = false,
-      bot_audio_streaming = false,
     } = apiDetail;
     const isLive = meeting.status === "live";
-    const isScheduled = meeting.status === "scheduled";
     const isEnded = meeting.status === "ended";
     const fullTranscriptText =
       (transcript_segments ?? [])
@@ -221,36 +167,10 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
                 Join meeting
               </Button>
             )}
-            {isScheduled && meeting.meeting_url && (
-              <Button size="sm" disabled={starting} onClick={handleStartBot}>
-                {starting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Bot className="h-4 w-4 mr-2" />}
-                Start bot
-              </Button>
-            )}
-            {isLive && (
+            {!isEnded && (
               <Button variant="destructive" size="sm" disabled={stopping} onClick={handleStopMeeting}>
                 {stopping ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Square className="h-4 w-4 mr-2" />}
-                Stop meeting
-              </Button>
-            )}
-            {isLive && bot_running && bot_audio_streaming && (
-              <Button variant="outline" size="sm" disabled={pausingBotAudio} onClick={handlePauseBotAudio}>
-                {pausingBotAudio ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <VolumeX className="h-4 w-4 mr-2" />
-                )}
-                Pause system audio
-              </Button>
-            )}
-            {isLive && bot_running && !bot_audio_streaming && (
-              <Button variant="outline" size="sm" disabled={resumingBotAudio} onClick={handleResumeBotAudio}>
-                {resumingBotAudio ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Volume2 className="h-4 w-4 mr-2" />
-                )}
-                Resume system audio
+                End meeting
               </Button>
             )}
             <Button
@@ -405,34 +325,26 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
 
           <TabsContent value="transcripts" className="mt-4">
             <div className="space-y-4">
-              {isLive && meetingId && (
+              {!isEnded && meetingId && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                      Live transcript
-                    </CardTitle>
+                    <CardTitle className="text-base">Live transcription</CardTitle>
                     <CardDescription>
-                      Server path uses Groq on the machine running the API (system/loopback capture from the bot).
-                      Use Pause system audio in the header to stop that stream without ending the meeting. Browser
-                      mic uses Web Speech locally in your browser only.
+                      Use your microphone and the browser Web Speech API. Text is saved when you click End meeting.
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    {!bot_running && (
-                      <p className="text-xs text-muted-foreground mb-3">
-                        No bot registered on this API host (e.g. dev without Selenium). Pause/resume applies when the
-                        meeting bot is running here.
-                      </p>
-                    )}
-                    <LiveMeetingTranscript meetingId={meetingId} />
+                    <LiveMeetingTranscript ref={transcriptRef} meetingId={meetingId} />
                   </CardContent>
                 </Card>
               )}
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">Full transcript</CardTitle>
-                  <CardDescription>Saved segments from the meeting bot</CardDescription>
+                  <CardDescription>
+                    Saved transcript segments (browser Web Speech is stored when you end the meeting, or from server
+                    recording if used)
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   {fullTranscriptText ? (
@@ -453,9 +365,7 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground italic">
-                      {isLive ? "Transcript will appear as the bot transcribes." : "No transcript yet."}
-                    </p>
+                    <p className="text-sm text-muted-foreground italic">No saved transcript yet.</p>
                   )}
                 </CardContent>
               </Card>
@@ -529,7 +439,7 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
                 ) : (
                   <div className="space-y-2">
                     <p className="text-sm text-muted-foreground italic">
-                      {isLive ? "Summary will be generated when you stop the meeting." : "No summary yet."}
+                      {isLive ? "Summary will be generated when you end the meeting." : "No summary yet."}
                     </p>
                     {isEnded && (
                       <Button variant="outline" size="sm" disabled={generatingSummary} onClick={handleGenerateSummary}>
@@ -547,7 +457,7 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Action items</CardTitle>
-                <CardDescription>Tasks extracted from the meeting (after stop)</CardDescription>
+                <CardDescription>Tasks extracted from the meeting after it ends</CardDescription>
               </CardHeader>
               <CardContent>
                 {action_items && action_items.length > 0 ? (
@@ -564,7 +474,7 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground italic">
-                    {isLive ? "Action items will be extracted when you stop the meeting." : "No action items yet."}
+                    {isLive ? "Action items will be extracted when you end the meeting." : "No action items yet."}
                   </p>
                 )}
               </CardContent>

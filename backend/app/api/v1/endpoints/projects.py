@@ -26,15 +26,35 @@ router = APIRouter()
 
 async def _project_to_out(db, project_dict: dict) -> ProjectOut:
     """Convert project dict to ProjectOut with member_details from users collection."""
-    members = project_dict.get("members") or []
-    member_details = []
+    members = list(project_dict.get("members") or [])
+    _oid = project_dict.get("owner_id")
+    owner_id = str(_oid).strip() if _oid is not None else ""
+    # Ensure owner appears even if legacy data omitted them from members[]
+    seen: set[str] = set()
+    ordered_ids: list[str] = []
+    if owner_id:
+        seen.add(owner_id)
+        ordered_ids.append(owner_id)
     for uid in members:
+        uids = str(uid).strip()
+        if uids and uids not in seen:
+            seen.add(uids)
+            ordered_ids.append(uids)
+    member_details = []
+    for uid in ordered_ids:
         try:
             u = await db.users.find_one({"_id": ObjectId(uid)})
         except Exception:
             u = None
         if u:
-            member_details.append(MemberInfo(id=str(u["_id"]), name=u.get("name", ""), email=u.get("email", "")))
+            member_details.append(
+                MemberInfo(
+                    id=str(u["_id"]),
+                    name=u.get("name", "") or "",
+                    email=u.get("email", "") or "",
+                    role=str(u.get("role", "") or "").strip(),
+                )
+            )
     out_id = str(project_dict["_id"])
     rest = {k: v for k, v in project_dict.items() if k not in ("_id", "id")}
     return ProjectOut(id=out_id, **rest, member_details=member_details)
@@ -139,6 +159,8 @@ async def update_project_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     update_data = body.model_dump(exclude_unset=True)
+    if "description" in update_data:
+        update_data["description_user_set"] = True
     if "status" in update_data:
         update_data["status"] = _normalize_status(update_data["status"])
     if update_data.get("status") == "done" and not update_data.get("completed_at"):

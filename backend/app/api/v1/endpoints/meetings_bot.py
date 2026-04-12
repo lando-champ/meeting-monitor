@@ -1,7 +1,7 @@
 """
 Meeting bot API: start/stop meeting, participant join/leave, get meeting (transcripts, attendance, summary, action items).
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
@@ -205,6 +205,84 @@ async def get_meeting(
         "total_participants": unique_participants,
         "total_duration": total_duration,
     }
+
+
+async def _meeting_for_transcript_append(
+    db,
+    meeting_id: str,
+    current_user: User,
+) -> dict:
+    try:
+        oid = ObjectId(meeting_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid meeting ID")
+    meeting = await db.meetings.find_one({"_id": oid})
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    if meeting.get("project_id"):
+        await verify_project_membership(meeting["project_id"], current_user)
+    st = meeting.get("status") or "scheduled"
+    if st not in ("scheduled", "live"):
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot add browser transcript after the meeting has ended",
+        )
+    return meeting
+
+
+@router.post("/{meeting_id}/transcript-segments/browser", status_code=status.HTTP_200_OK)
+async def append_browser_transcript_segments(
+    meeting_id: str,
+    body: dict = Body(...),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Save Web Speech lines to transcript_segments + transcripts (same shape as STT pipeline)."""
+    db = await get_database()
+    await _meeting_for_transcript_append(db, meeting_id, current_user)
+
+    raw = body.get("texts")
+    if raw is None:
+        raw = body.get("segments")
+    if not isinstance(raw, list):
+        raise HTTPException(status_code=400, detail="texts must be a list of strings")
+
+    texts: list[str] = []
+    for item in raw:
+        if isinstance(item, str):
+            s = item.strip()
+        elif isinstance(item, dict) and item.get("text") is not None:
+            s = str(item.get("text") or "").strip()
+        else:
+            continue
+        if s:
+            texts.append(s[:8000])
+    if len(texts) > 500:
+        raise HTTPException(status_code=400, detail="Too many segments in one request (max 500)")
+
+    if not texts:
+        return {"inserted": 0, "meeting_id": meeting_id}
+
+    base = _meeting_now()
+    inserted = 0
+    for i, t in enumerate(texts):
+        ts = base + timedelta(milliseconds=i + 1)
+        await db.transcript_segments.insert_one(
+            {
+                "meeting_id": meeting_id,
+                "text": t,
+                "timestamp": ts,
+                "source": "browser_webspeech",
+            }
+        )
+        await db.transcripts.insert_one(
+            {
+                "meeting_id": meeting_id,
+                "text": t,
+                "timestamp": ts,
+            }
+        )
+        inserted += 1
+    return {"inserted": inserted, "meeting_id": meeting_id}
 
 
 @router.post("/{meeting_id}/ask", status_code=status.HTTP_200_OK)

@@ -290,6 +290,7 @@ Rules:
                     "project_id": project_id,
                     "title": title,
                     "description": desc_s or "Created by workspace copilot",
+                    "description_user_set": True,
                     "status": "todo",
                     "priority": pr,
                     "assignee_id": aid,

@@ -298,6 +298,7 @@ async def seed_database() -> None:
                 "project_id": alpha_workspace_id,
                 "title": task["title"],
                 "description": task["description"],
+                "description_user_set": True,
                 "status": task["status"],
                 "priority": task["priority"],
                 "assignee_id": task["assignee_id"],

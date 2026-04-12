@@ -7,7 +7,8 @@ Flow:
    acceptance). Suggestions / unconfirmed asks are not Kanban tasks.
 3) First pass applies new/merged tasks to Mongo (match by title + assignee).
 4) Second pass: current Kanban board (all auto tasks) + **latest meeting transcript only** → Groq returns
-   column moves (todo / in_progress / in_review / done / blockers) grounded in verbatim evidence.
+   column moves (todo / in_progress / in_review / done / blockers) grounded in verbatim evidence (validated in-process;
+   not stored on the task document).
 5) Informal action items from the latest pass are logged only (not persisted as tasks).
 """
 from __future__ import annotations
@@ -65,7 +66,7 @@ class ExtractedTask:
     blockers: List[str]
     confidence: float
     source_meeting_id: str
-    evidence: str = ""  # verbatim transcript only (stored as task description)
+    evidence: str = ""  # verbatim transcript excerpt; in-memory for dedup/LLM only (not persisted as description)
     evidence_meeting_id: str = ""  # meeting section the evidence came from
     meeting_ordinal: int = 0  # 0 = oldest in bundle; higher = more recent
 
@@ -516,6 +517,7 @@ def _get_groq_client() -> Groq:
 
 
 def _merge_transcript_description(old: Optional[str], new_ev: str) -> str:
+    """Merge verbatim evidence snippets on ExtractedTask only (not persisted to Mongo description)."""
     o = (old or "").strip()
     n = (new_ev or "").strip()
     if not n:
@@ -1042,10 +1044,6 @@ async def rebuild_kanban_from_meeting_history(
                 updates["assigned_at"] = meeting_ts
             if (match.get("due_date") or None) != due_dt:
                 updates["due_date"] = due_dt
-            if item.evidence:
-                new_desc = _merge_transcript_description(match.get("description"), item.evidence)
-                if new_desc != (match.get("description") or "").strip():
-                    updates["description"] = new_desc
             had_field_changes = bool(updates)
             set_doc = {**updates, "updated_at": now, "last_activity_at": now}
             add_each = [x for x in sync_ids if x]
@@ -1079,7 +1077,7 @@ async def rebuild_kanban_from_meeting_history(
         new_doc = {
             "project_id": project_id,
             "title": item.title,
-            "description": (item.evidence or "").strip() or None,
+            "description": None,
             "status": item.status if item.status in KANBAN_STATUSES else "todo",
             "priority": "medium",
             "assignee_id": assignee_id,
@@ -1188,11 +1186,6 @@ async def rebuild_kanban_from_meeting_history(
                     new_key = new_dt.date().isoformat()
                     if old_key != new_key:
                         updates2["due_date"] = new_dt
-
-            if ev:
-                merged = _merge_transcript_description(doc.get("description"), ev)
-                if merged != (doc.get("description") or "").strip():
-                    updates2["description"] = merged
 
             bl_raw = u.get("blockers")
             blocker_text = ""

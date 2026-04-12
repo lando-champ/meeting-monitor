@@ -54,6 +54,7 @@ import {
   type ApiTask,
   type ProjectMember,
 } from '@/lib/api';
+import { taskDescriptionForDisplay } from '@/lib/taskDescription';
 import { useAuth } from '@/context/AuthContext';
 import {
   AlertDialog,
@@ -391,6 +392,11 @@ const ManagerTasks = () => {
               <div className="space-y-2">
                 {filteredTasks.map((task) => {
                   const assignee = getAssignee(task.assignee_id);
+                  const displayDesc = taskDescriptionForDisplay(
+                    task.description,
+                    task.is_auto_generated,
+                    task.description_user_set,
+                  );
                   return (
                     <div
                       key={task.id}
@@ -416,9 +422,9 @@ const ManagerTasks = () => {
                               </Badge>
                             )}
                           </div>
-                          {task.description && (
-                            <p className="text-sm text-muted-foreground">{task.description}</p>
-                          )}
+                          {displayDesc ? (
+                            <p className="text-sm text-muted-foreground">{displayDesc}</p>
+                          ) : null}
                         </div>
                       </div>
                       <div className="flex items-center gap-4">

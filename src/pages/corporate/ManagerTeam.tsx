@@ -44,7 +44,15 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { TeamMember } from '@/lib/types';
-import { getProject, type ApiTask } from '@/lib/api';
+import { getProject, type ApiTask, type ProjectMember } from '@/lib/api';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 
 function memberTaskStats(memberId: string, memberName: string, tasks: ApiTask[]) {
@@ -72,7 +80,7 @@ const ManagerTeam = () => {
   const { toast } = useToast();
   const [tasks, setTasks] = useState<ApiTask[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
-  type EditableMember = TeamMember & { designation?: string };
+  type EditableMember = TeamMember & { designation?: string; jobRole?: string };
   const [newMember, setNewMember] = useState("");
   const [error, setError] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -110,14 +118,16 @@ const ManagerTeam = () => {
   const teamMembers: EditableMember[] = useMemo(() => {
     const details = currentWorkspace?.memberDetails ?? [];
     const ownerId = currentWorkspace?.ownerId;
-    return details.map((m) => {
+    return details.map((m: ProjectMember) => {
       const st = memberTaskStats(m.id, m.name, tasks);
+      const jobRole = (m.role ?? '').trim();
       return {
         id: m.id,
         name: m.name,
         email: m.email,
         avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(m.name)}`,
         role: m.id === ownerId ? 'Owner' : 'Member',
+        jobRole: jobRole || undefined,
         status: 'active' as const,
         productivityScore: st.productivityScore,
         tasksCompleted: st.tasksCompleted,
@@ -286,17 +296,32 @@ const ManagerTeam = () => {
               <CardDescription>All team members with access to this workspace (from database)</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-2">
-                {(currentWorkspace.memberDetails ?? []).map((m) => (
-                  <div key={m.id} className="flex items-center justify-between text-sm">
-                    <span className="font-medium">{m.name}</span>
-                    <span className="text-muted-foreground">{m.email}</span>
-                    <Badge variant={m.id === currentWorkspace.ownerId ? "default" : "secondary"}>
-                      {m.id === currentWorkspace.ownerId ? "Owner" : "Member"}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Workspace</TableHead>
+                    <TableHead>Role</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(currentWorkspace.memberDetails ?? []).map((m) => (
+                    <TableRow key={m.id}>
+                      <TableCell className="font-medium">{m.name}</TableCell>
+                      <TableCell className="text-muted-foreground">{m.email}</TableCell>
+                      <TableCell>
+                        <Badge variant={m.id === currentWorkspace.ownerId ? 'default' : 'secondary'}>
+                          {m.id === currentWorkspace.ownerId ? 'Owner' : 'Member'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {(m.role ?? '').trim() || '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         )}
@@ -376,10 +401,17 @@ const ManagerTeam = () => {
                     </div>
                     <div>
                       <p className="font-medium">{member.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {member.role}
-                        {member.designation ? ` • ${member.designation}` : ""}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                        <Badge variant="outline" className="text-[10px] font-normal">
+                          {member.role}
+                        </Badge>
+                        {member.jobRole ? (
+                          <span>{member.jobRole}</span>
+                        ) : null}
+                        {member.designation ? (
+                          <span className="text-xs">· {member.designation}</span>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                   <DropdownMenu>
@@ -393,7 +425,7 @@ const ManagerTeam = () => {
                         onClick={() => {
                           setSelectedMember(member);
                           setEditName(member.name);
-                          setEditRole(member.role);
+                          setEditRole(member.jobRole ?? member.role);
                           setEditDesignation(member.designation ?? "");
                           setEditOpen(true);
                         }}

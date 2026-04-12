@@ -10,6 +10,31 @@ from datetime import datetime
 
 router = APIRouter()
 
+
+def _should_clear_non_user_auto_task_description(
+    desc: Optional[str], is_auto_generated: bool, description_user_set: bool
+) -> bool:
+    """Auto tasks keep description only if description_user_set (user/copilot/seed)."""
+    if not is_auto_generated or description_user_set:
+        return False
+    return bool(str(desc or "").strip())
+
+
+async def _maybe_clear_auto_task_description(db, doc: dict) -> dict:
+    """Clear meeting/STT description on auto tasks until user saves description explicitly."""
+    out = dict(doc)
+    user_set = bool(out.get("description_user_set"))
+    if not _should_clear_non_user_auto_task_description(
+        out.get("description"), bool(out.get("is_auto_generated")), user_set
+    ):
+        return out
+    oid = out.get("_id")
+    if oid is not None:
+        await db.tasks.update_one({"_id": oid}, {"$set": {"description": None}})
+    out["description"] = None
+    return out
+
+
 # Normalize legacy status values to Kairox 5-column statuses
 def _normalize_status(s: Optional[str]) -> str:
     if not s:
@@ -23,12 +48,14 @@ def _task_doc_to_model(d: dict) -> Task:
     d["id"] = str(d.pop("_id", d.get("id", "")))
     d["status"] = _normalize_status(d.get("status"))
     d.pop("copilot_created", None)
+    d["description_user_set"] = bool(d.get("description_user_set"))
     return Task(**{k: v for k, v in d.items() if k != "_id"})
 
 
 async def task_with_key(db, d: dict) -> Task:
     """Ensure task_key is stored (lazy backfill) before building the response model."""
     doc = dict(d)
+    doc = await _maybe_clear_auto_task_description(db, doc)
     if doc.get("_id") is not None and not (doc.get("task_key") or "").strip():
         doc["task_key"] = await ensure_task_key_persisted(db, doc)
     return _task_doc_to_model(doc)
@@ -129,6 +156,8 @@ async def update_task(
     await verify_project_membership(task["project_id"], current_user)
     
     update_data = task_update.model_dump(exclude_unset=True)
+    if "description" in update_data:
+        update_data["description_user_set"] = True
     if "status" in update_data:
         update_data["status"] = _normalize_status(update_data["status"])
     if update_data.get("status") == "done" and not update_data.get("completed_at"):

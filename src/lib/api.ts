@@ -210,32 +210,21 @@ export async function stopMeeting(
   return res.json();
 }
 
-export async function pauseMeetingBotAudio(
+/** Persist Web Speech lines (call before end meeting so summary/intelligence sees them). */
+export async function appendBrowserTranscriptSegments(
   token: string,
-  meetingId: string
-): Promise<{ message: string; meeting_id: string; bot_audio_streaming: boolean }> {
-  const res = await fetch(`${apiBaseUrl}/api/v1/meetings/${meetingId}/bot/audio/pause`, {
+  meetingId: string,
+  texts: string[]
+): Promise<{ inserted: number; meeting_id: string }> {
+  const res = await fetch(`${apiBaseUrl}/api/v1/meetings/${meetingId}/transcript-segments/browser`, {
     method: "POST",
-    headers: getAuthHeaders(token),
+    headers: { "Content-Type": "application/json", ...getAuthHeaders(token) },
+    body: JSON.stringify({ texts }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(typeof err.detail === "string" ? err.detail : "Failed to pause bot audio");
-  }
-  return res.json();
-}
-
-export async function resumeMeetingBotAudio(
-  token: string,
-  meetingId: string
-): Promise<{ message: string; meeting_id: string; bot_audio_streaming: boolean }> {
-  const res = await fetch(`${apiBaseUrl}/api/v1/meetings/${meetingId}/bot/audio/resume`, {
-    method: "POST",
-    headers: getAuthHeaders(token),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(typeof err.detail === "string" ? err.detail : "Failed to resume bot audio");
+    const d = err.detail;
+    throw new Error(typeof d === "string" ? d : "Failed to save transcript");
   }
   return res.json();
 }
@@ -329,6 +318,8 @@ export interface ProjectMember {
   id: string;
   name: string;
   email: string;
+  /** Account/job role from user profile (not workspace Owner vs Member). */
+  role?: string;
 }
 
 export interface ApiProject {
@@ -409,6 +400,8 @@ export interface ApiTask {
   subtasks: string[] | null;
   source_meeting_id: string | null;
   is_auto_generated: boolean;
+  /** When true, description was set by user/copilot/seed and is shown for AI tasks. */
+  description_user_set?: boolean;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
