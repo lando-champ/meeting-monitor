@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Github,
   Loader2,
+  RefreshCw,
 } from 'lucide-react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { SidebarItem } from '@/components/layout/Sidebar';
@@ -29,6 +30,25 @@ import { useWorkspace } from '@/context/WorkspaceContext';
 import { useAuth } from '@/context/AuthContext';
 import { getProject, patchProjectGitHub, getGithubWebhookCallbackUrl } from '@/lib/api';
 import { Input } from '@/components/ui/input';
+
+function shortDeliveryId(id: string | null | undefined): string {
+  if (!id) return "—";
+  return id.length > 10 ? `${id.slice(0, 8)}…` : id;
+}
+
+function summarizeGithubWebhookResult(r: Record<string, unknown> | null | undefined): string {
+  if (!r || typeof r !== "object") return "";
+  if (r.error != null && typeof r.error === "string") return r.error;
+  if (typeof r.skipped === "string") return `Skipped: ${r.skipped}`;
+  const parts: string[] = [];
+  if (typeof r.event === "string") parts.push(r.event);
+  if (typeof r.tasks_updated === "number") parts.push(`${r.tasks_updated} task(s) updated`);
+  if (typeof r.tasks_finalized_after_ci === "number")
+    parts.push(`${r.tasks_finalized_after_ci} finalized after CI`);
+  if (Array.isArray(r.keys) && r.keys.length) parts.push(`Keys: ${r.keys.map(String).join(", ")}`);
+  if (typeof r.conclusion === "string") parts.push(`CI: ${r.conclusion}`);
+  return parts.join(" · ") || (r.ok === false ? "Error" : "OK");
+}
 
 const settingsSections = [
   {
@@ -80,6 +100,10 @@ const ManagerSettings = () => {
   const [ghSaving, setGhSaving] = useState(false);
   const [ghError, setGhError] = useState<string | null>(null);
   const [projectOwnerId, setProjectOwnerId] = useState<string | null>(null);
+  const [ghWebhookLastAt, setGhWebhookLastAt] = useState<string | null>(null);
+  const [ghWebhookLastEvent, setGhWebhookLastEvent] = useState<string | null>(null);
+  const [ghWebhookLastDelivery, setGhWebhookLastDelivery] = useState<string | null>(null);
+  const [ghWebhookLastResult, setGhWebhookLastResult] = useState<Record<string, unknown> | null>(null);
   const webhookCallbackUrl = getGithubWebhookCallbackUrl();
   const isProjectOwner = Boolean(user?.id && projectOwnerId && user.id === projectOwnerId);
 
@@ -95,6 +119,10 @@ const ManagerSettings = () => {
       setProjectOwnerId(p.owner_id);
       setGhRepo((p.github_full_name ?? "").trim());
       setGhWebhook(Boolean(p.github_webhook_enabled));
+      setGhWebhookLastAt(p.github_webhook_last_at ?? null);
+      setGhWebhookLastEvent(p.github_webhook_last_event ?? null);
+      setGhWebhookLastDelivery(p.github_webhook_last_delivery ?? null);
+      setGhWebhookLastResult(p.github_webhook_last_result ?? null);
     } catch {
       setGhError("Could not load GitHub settings.");
     } finally {
@@ -117,6 +145,10 @@ const ManagerSettings = () => {
       });
       setGhRepo((updated.github_full_name ?? "").trim());
       setGhWebhook(Boolean(updated.github_webhook_enabled));
+      setGhWebhookLastAt(updated.github_webhook_last_at ?? null);
+      setGhWebhookLastEvent(updated.github_webhook_last_event ?? null);
+      setGhWebhookLastDelivery(updated.github_webhook_last_delivery ?? null);
+      setGhWebhookLastResult(updated.github_webhook_last_result ?? null);
     } catch (e) {
       setGhError(e instanceof Error ? e.message : "Failed to save");
     } finally {
@@ -239,6 +271,60 @@ const ManagerSettings = () => {
                     Save GitHub settings
                   </Button>
                 )}
+                <Separator />
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <Label>Last GitHub webhook</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Last delivery handled for this linked repository (UTC time from server).
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void loadGithubProject()}
+                      disabled={ghLoading}
+                    >
+                      {ghLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4" />
+                      )}
+                      <span className="ml-2">Refresh</span>
+                    </Button>
+                  </div>
+                  {!ghWebhookLastAt ? (
+                    <p className="text-sm text-muted-foreground">
+                      No webhook has been recorded yet. After GitHub sends an event, refresh here to see the outcome.
+                    </p>
+                  ) : (
+                    <div className="rounded-md border bg-muted/30 p-3 space-y-1 text-sm">
+                      <p>
+                        <span className="text-muted-foreground font-sans">Time (UTC): </span>
+                        {new Date(ghWebhookLastAt).toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " Z")}
+                      </p>
+                      <p>
+                        <span className="text-muted-foreground font-sans">Event: </span>
+                        {ghWebhookLastEvent ?? "—"}
+                      </p>
+                      <p>
+                        <span className="text-muted-foreground font-sans">Delivery: </span>
+                        {shortDeliveryId(ghWebhookLastDelivery ?? undefined)}
+                      </p>
+                      <p className="font-sans pt-1">
+                        <span className="text-muted-foreground">Summary: </span>
+                        {summarizeGithubWebhookResult(ghWebhookLastResult) || "—"}
+                      </p>
+                      {ghWebhookLastResult && Object.keys(ghWebhookLastResult).length > 0 ? (
+                        <pre className="mt-2 max-h-40 overflow-auto rounded bg-muted p-2 text-[11px] leading-relaxed">
+                          {JSON.stringify(ghWebhookLastResult, null, 2)}
+                        </pre>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </CardContent>

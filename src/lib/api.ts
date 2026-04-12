@@ -336,6 +336,11 @@ export interface ApiProject {
   /** GitHub `owner/repo` when linked (Kanban webhook). */
   github_full_name?: string | null;
   github_webhook_enabled?: boolean;
+  /** Last handled webhook for this repo mapping (manager diagnostics). */
+  github_webhook_last_at?: string | null;
+  github_webhook_last_event?: string | null;
+  github_webhook_last_delivery?: string | null;
+  github_webhook_last_result?: Record<string, unknown> | null;
 }
 
 export async function createProject(

@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
+from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 
 from app.core.config import settings
@@ -480,6 +481,44 @@ async def _handle_push(db, payload: dict, project_id: str) -> Dict[str, Any]:
     return {"ok": True, "event": "push", "keys": keys_hit, "tasks_updated": updated_total}
 
 
+def _json_safe_for_mongo(d: Dict[str, Any]) -> Dict[str, Any]:
+    """Store webhook handler result in Mongo (primitives only)."""
+    try:
+        return json.loads(json.dumps(d, default=str))
+    except Exception:
+        return {"_serialization_error": True, "summary": str(d)[:2000]}
+
+
+async def record_github_webhook_on_project(
+    db,
+    project_id: str,
+    event: str,
+    delivery: str,
+    result: Dict[str, Any],
+) -> None:
+    """Persist last delivery outcome on the workspace project for manager UI debugging."""
+    try:
+        pid = ObjectId(project_id)
+    except Exception:
+        logger.warning("record_github_webhook_on_project: invalid project_id=%r", project_id)
+        return
+    try:
+        safe = _json_safe_for_mongo(result)
+        await db.projects.update_one(
+            {"_id": pid},
+            {
+                "$set": {
+                    "github_webhook_last_at": datetime.utcnow(),
+                    "github_webhook_last_event": (event or "")[:200],
+                    "github_webhook_last_delivery": (delivery or "")[:200],
+                    "github_webhook_last_result": safe,
+                }
+            },
+        )
+    except Exception:
+        logger.exception("record_github_webhook_on_project failed project_id=%s", project_id)
+
+
 async def handle_github_webhook(
     db,
     body: bytes,
@@ -519,12 +558,17 @@ async def handle_github_webhook(
 
     if event == "pull_request":
         result = await _handle_pull_request(db, payload, project_id)
+        await record_github_webhook_on_project(db, project_id, event, delivery, result)
         return (result, None)
     if event == "workflow_run":
         result = await _handle_workflow_run(db, payload, project_id)
+        await record_github_webhook_on_project(db, project_id, event, delivery, result)
         return (result, None)
     if event == "push":
         result = await _handle_push(db, payload, project_id)
+        await record_github_webhook_on_project(db, project_id, event, delivery, result)
         return (result, None)
 
-    return ({"ok": True, "skipped": "unsupported_event", "event": event}, None)
+    result = {"ok": True, "skipped": "unsupported_event", "event": event}
+    await record_github_webhook_on_project(db, project_id, event, delivery, result)
+    return (result, None)

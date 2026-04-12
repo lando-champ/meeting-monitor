@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Literal, Optional, List
+from typing import Any, Dict, Literal, Optional, List
 from datetime import datetime
 from bson import ObjectId
 
@@ -22,6 +22,11 @@ class ProjectBase(BaseModel):
     # GitHub: owner/repo for webhook → project mapping (optional)
     github_full_name: Optional[str] = None
     github_webhook_enabled: bool = False
+    # Last successful webhook handling for this repo mapping (manager diagnostics)
+    github_webhook_last_at: Optional[datetime] = None
+    github_webhook_last_event: Optional[str] = None
+    github_webhook_last_delivery: Optional[str] = None
+    github_webhook_last_result: Optional[Dict[str, Any]] = None
 
 
 class ProjectGitHubSettings(BaseModel):
