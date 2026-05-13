@@ -20,4 +20,6 @@ jobs:
 
       - name: Run pytest
         working-directory: backend
+        env:
+          CONSILIUM_CHECKPOINTER: memory
         run: pytest tests -q

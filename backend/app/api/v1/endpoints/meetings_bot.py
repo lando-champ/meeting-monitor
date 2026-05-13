@@ -7,6 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from bson import ObjectId
 
+from app.core.config import settings
 from app.core.database import get_database
 from app.core.dependencies import get_current_active_user, verify_project_membership
 from app.models.user import User
@@ -15,6 +16,7 @@ from app.api.v1.endpoints.meeting_bot_ws import ws_manager
 from app.services.meetings_ops import run_meeting_intelligence
 from app.services.kanban_agentic_automation import rebuild_kanban_from_meeting_history
 from app.services.meeting_context_qa import answer_meeting_question, _build_transcript_text
+from app.services.transcript_rag.service import retrieve_project_rag_snippet
 
 router = APIRouter()
 
@@ -29,6 +31,37 @@ def _meeting_now() -> datetime:
 def set_bot_manager(manager):
     global _bot_manager
     _bot_manager = manager
+
+
+@router.get("/{meeting_id}/bot-status", status_code=status.HTTP_200_OK)
+async def meeting_bot_status(
+    meeting_id: str,
+    current_user: User = Depends(get_current_active_user),
+):
+    """Diagnostics: whether a bot is attached to this meeting on this API instance."""
+    db = await get_database()
+    try:
+        oid = ObjectId(meeting_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid meeting ID")
+    meeting = await db.meetings.find_one({"_id": oid})
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    if meeting.get("project_id"):
+        await verify_project_membership(meeting["project_id"], current_user)
+    if not _bot_manager:
+        return {
+            "meeting_id": meeting_id,
+            "bot_available": False,
+            "bot_running": False,
+            "bot_audio_streaming": False,
+        }
+    return {
+        "meeting_id": meeting_id,
+        "bot_available": True,
+        "bot_running": _bot_manager.is_bot_running(meeting_id),
+        "bot_audio_streaming": _bot_manager.is_bot_audio_streaming(meeting_id),
+    }
 
 
 async def _meeting_for_bot_audio_ops(
@@ -318,6 +351,14 @@ async def ask_about_meeting(
         key_points = [key_points]
     action_texts = [a.get("text") for a in action_docs if a.get("text")]
 
+    rag_snippet = ""
+    pid = meeting.get("project_id")
+    if pid and bool(getattr(settings, "TRANSCRIPT_RAG_FOR_QA_ENABLED", False)):
+        try:
+            rag_snippet, _ = await retrieve_project_rag_snippet(db, str(pid), question, prefer_meeting_id=meeting_id)
+        except Exception:
+            rag_snippet = ""
+
     try:
         answer = answer_meeting_question(
             meeting_title=(meeting.get("title") or "") or "",
@@ -326,6 +367,7 @@ async def ask_about_meeting(
             key_points=key_points if isinstance(key_points, list) else [],
             action_items=action_texts,
             question=question,
+            rag_context=rag_snippet or None,
         )
     except ValueError as e:
         raise HTTPException(status_code=503, detail=str(e))

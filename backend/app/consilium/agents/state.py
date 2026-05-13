@@ -84,3 +84,8 @@ class ProjectState(TypedDict, total=False):
     allowed_tools: List[str] | None
     tool_results: List[Dict[str, Any]]
     external_events: List[Dict[str, Any]]
+
+    # Report-aligned: meeting pipeline → monitoring
+    meeting_signal: Dict[str, Any]
+    transcript_rag_evidence: str
+    blocker_recurrence_score: float

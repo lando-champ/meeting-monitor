@@ -30,6 +30,7 @@ def answer_meeting_question(
     key_points: Optional[List[str]],
     action_items: Optional[List[str]],
     question: str,
+    rag_context: Optional[str] = None,
 ) -> str:
     if not settings.GROQ_API_KEY:
         raise ValueError("GROQ_API_KEY is not configured")
@@ -39,6 +40,11 @@ def answer_meeting_question(
         t = t[-MAX_TRANSCRIPT_CHARS:]
 
     ctx_parts = [f"Meeting title: {meeting_title or 'Untitled'}"]
+    rag = (rag_context or "").strip()
+    if rag:
+        ctx_parts.append(
+            "Retrieved excerpts from other meetings in this project (may be partial):\n" + rag
+        )
     if summary_text:
         ctx_parts.append(f"Summary:\n{summary_text.strip()}")
     if key_points:
@@ -50,7 +56,7 @@ def answer_meeting_question(
     context_blob = "\n\n".join(ctx_parts)
 
     sys_msg = """You are a concise meeting assistant. Answer ONLY using the meeting context provided
-(transcript, summary, key points, action items). If the context does not contain enough information,
+(transcript, summary, key points, action items, and any retrieved project-meeting excerpts). If the context does not contain enough information,
 say so briefly and suggest what would be needed (e.g. more transcript or running the meeting longer).
 Do not invent participants, decisions, or tasks. Keep answers clear and short unless the user asks for detail."""
 

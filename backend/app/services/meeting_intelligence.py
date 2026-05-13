@@ -302,4 +302,6 @@ async def analyze_meeting_transcript(
         "meeting_id": meeting_id,
         "overview_len": len(overview),
         "action_items_count": len([x for x in action_items if (x or "").strip()]),
+        "summary": summary_dict,
+        "action_items": action_items,
     }

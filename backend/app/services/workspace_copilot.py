@@ -187,8 +187,21 @@ async def run_workspace_copilot(
     if not snap:
         return "Workspace not found.", []
 
+    if bool(getattr(settings, "TRANSCRIPT_RAG_FOR_COPILOT_ENABLED", False)):
+        try:
+            from app.services.transcript_rag.service import retrieve_project_rag_snippet
+
+            rag, _ = await retrieve_project_rag_snippet(
+                db, project_id, user_message.strip(), prefer_meeting_id=meeting_id
+            )
+            if (rag or "").strip():
+                snap["transcript_rag_snippet"] = (rag or "").strip()[:12_000]
+        except Exception:
+            logger.debug("Copilot transcript RAG skipped", exc_info=True)
+
     sys_prompt = """You are a workspace copilot with access to the JSON snapshot below (in the user message).
 You help with this project: meetings, tasks, members, and what was discussed.
+If the snapshot includes transcript_rag_snippet, treat it as retrieved verbatim meeting text from across the project (may be partial).
 
 Reply with ONE JSON object only (no markdown):
 {

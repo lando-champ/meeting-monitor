@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.core.database import get_database
 from app.core.dependencies import get_current_user, verify_project_membership, verify_project_owner
@@ -22,6 +22,61 @@ from app.services.task_stale_detection import mark_stale_tasks_in_project
 from app.services.workspace_copilot import run_workspace_copilot
 
 router = APIRouter()
+
+
+@router.get("/{project_id}/analytics/timeseries")
+async def project_analytics_timeseries(
+    project_id: str,
+    weeks: int = 8,
+    project: dict = Depends(verify_project_membership),
+):
+    """
+    Weekly task created/completed counts and approximate open backlog at each week end (UTC).
+    """
+    db = await get_database()
+    wk = max(1, min(52, int(weeks)))
+    now = datetime.utcnow()
+    start = now - timedelta(days=7 * wk)
+    tasks = await db.tasks.find({"project_id": project_id}).to_list(length=50_000)
+    weeks_out: list[dict] = []
+    for i in range(wk):
+        wk_start = start + timedelta(days=7 * i)
+        wk_end = wk_start + timedelta(days=7)
+        created = 0
+        completed = 0
+        for t in tasks:
+            c_at = t.get("created_at")
+            if c_at is not None and wk_start <= c_at < wk_end:
+                created += 1
+            comp = t.get("completed_at")
+            if comp is not None and wk_start <= comp < wk_end:
+                completed += 1
+        open_end = 0
+        for t in tasks:
+            cr = t.get("created_at")
+            if cr is None or cr > wk_end:
+                continue
+            st = (t.get("status") or "").strip()
+            if st == "done":
+                co = t.get("completed_at")
+                if co is None or co <= wk_end:
+                    continue
+            open_end += 1
+        weeks_out.append(
+            {
+                "week_start": wk_start.date().isoformat(),
+                "week_end": (wk_end - timedelta(microseconds=1)).date().isoformat(),
+                "created": created,
+                "completed": completed,
+                "open_at_week_end": open_end,
+            }
+        )
+    velocity = sum(x["completed"] for x in weeks_out) / float(wk) if wk else 0.0
+    return {
+        "project_id": project_id,
+        "weeks": weeks_out,
+        "velocity_completed_per_week_avg": round(velocity, 2),
+    }
 
 
 async def _project_to_out(db, project_dict: dict) -> ProjectOut:

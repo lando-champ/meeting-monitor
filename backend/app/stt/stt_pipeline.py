@@ -25,6 +25,9 @@ from app.core.database import get_database
 
 logger = logging.getLogger(__name__)
 
+# Lazy singleton for optional local STT (STT_BACKEND=faster_whisper)
+_fw_whisper_state: dict = {"model": None, "model_name": ""}
+
 # Whisper often hallucinates these on silence or low-quality audio
 HALLUCINATION_PHRASES = frozenset({
     "thank you", "thank you.", "thanks", "thanks.",
@@ -185,6 +188,35 @@ class STTPipeline:
         self._skipped_hallucination = 0
         self._transcribed = 0
 
+    async def _transcribe_faster_whisper(self, wav_bytes: bytes) -> str:
+        """Local Whisper via faster-whisper (optional dependency)."""
+
+        def _run() -> str:
+            try:
+                from faster_whisper import WhisperModel
+            except ImportError as e:
+                raise RuntimeError(
+                    "STT_BACKEND=faster_whisper requires the faster-whisper package "
+                    "(pip install faster-whisper)."
+                ) from e
+            import numpy as np
+
+            model_name = str(getattr(settings, "STT_FASTER_WHISPER_MODEL", "base") or "base")
+            if _fw_whisper_state["model"] is None or _fw_whisper_state["model_name"] != model_name:
+                _fw_whisper_state["model"] = WhisperModel(model_name, device="cpu", compute_type="int8")
+                _fw_whisper_state["model_name"] = model_name
+            model = _fw_whisper_state["model"]
+            buf = io.BytesIO(wav_bytes)
+            with wave.open(buf, "rb") as wf:
+                nframes = wf.getnframes()
+                raw = wf.readframes(nframes)
+            audio = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+            segments_gen, _info = model.transcribe(audio, language="en", vad_filter=True)
+            parts = [s.text.strip() for s in segments_gen if (s.text or "").strip()]
+            return " ".join(parts).strip()
+
+        return await asyncio.to_thread(_run)
+
     async def _requeue_chunk(self, chunk: bytes, keep_seconds: float = None) -> None:
         """
         Put a tail of the failed chunk back into the front of the buffer.
@@ -301,52 +333,63 @@ class STTPipeline:
 
         wav_bytes = _pcm_to_wav(chunk, self.sample_rate)
 
-        if not settings.GROQ_API_KEY:
-            logger.warning("STT skipped (no GROQ_API_KEY)")
-            return
+        backend = str(getattr(settings, "STT_BACKEND", "groq") or "groq").lower().strip()
+        text_clean = ""
+        segments = None
 
-        try:
-            # Sync HTTP blocks the event loop; run in a thread so the audio WS keeps receiving.
-            # Fresh client per call avoids sharing httpx state across threads.
-            def _call_groq():
-                client = Groq(api_key=settings.GROQ_API_KEY)
-                prompt = self._build_whisper_prompt()
-                model_name = self._transcribe_model
-                if not self._accuracy_mode and model_name == "whisper-large-v3":
-                    model_name = "whisper-large-v3-turbo"
-                return client.audio.transcriptions.create(
-                    file=("audio.wav", wav_bytes, "audio/wav"),
-                    model=model_name,
-                    response_format="verbose_json",
-                    language="en",
-                    temperature=0.0,
-                    prompt=prompt if prompt else None,
-                )
-
-            transcription = await asyncio.to_thread(_call_groq)
-        except Exception as e:
-            err_name = type(e).__name__
-            err_str = str(e).lower()
-            if "AuthenticationError" in err_name or "401" in err_str or "invalid_api_key" in err_str:
-                logger.error(
-                    "Groq API key is invalid or expired. Set a valid GROQ_API_KEY in backend/.env "
-                    "(get one at https://console.groq.com). Transcription skipped."
-                )
-            elif "429" in err_str or "rate" in err_str:
-                backoff = 20.0
-                self._rate_limit_until = time.monotonic() + backoff
+        if backend == "faster_whisper":
+            try:
+                text_clean = (await self._transcribe_faster_whisper(wav_bytes)).strip()
+            except Exception as e:
+                logger.exception("faster-whisper transcription failed: %s", e)
                 await self._requeue_chunk(chunk)
-                logger.warning(
-                    "Groq rate limit (429). Backing off %.0fs; transcription will resume.",
-                    backoff,
-                )
-            else:
-                logger.exception("Groq Whisper transcription failed: %s", e)
-                await self._requeue_chunk(chunk)
-            return
+                return
+        else:
+            if not settings.GROQ_API_KEY:
+                logger.warning("STT skipped (no GROQ_API_KEY)")
+                return
 
-        text, segments = _transcription_text_and_segments(transcription)
-        text_clean = text.strip()
+            try:
+                # Sync HTTP blocks the event loop; run in a thread so the audio WS keeps receiving.
+                def _call_groq():
+                    client = Groq(api_key=settings.GROQ_API_KEY)
+                    prompt = self._build_whisper_prompt()
+                    model_name = self._transcribe_model
+                    if not self._accuracy_mode and model_name == "whisper-large-v3":
+                        model_name = "whisper-large-v3-turbo"
+                    return client.audio.transcriptions.create(
+                        file=("audio.wav", wav_bytes, "audio/wav"),
+                        model=model_name,
+                        response_format="verbose_json",
+                        language="en",
+                        temperature=0.0,
+                        prompt=prompt if prompt else None,
+                    )
+
+                transcription = await asyncio.to_thread(_call_groq)
+            except Exception as e:
+                err_name = type(e).__name__
+                err_str = str(e).lower()
+                if "AuthenticationError" in err_name or "401" in err_str or "invalid_api_key" in err_str:
+                    logger.error(
+                        "Groq API key is invalid or expired. Set a valid GROQ_API_KEY in backend/.env "
+                        "(get one at https://console.groq.com). Transcription skipped."
+                    )
+                elif "429" in err_str or "rate" in err_str:
+                    backoff = 20.0
+                    self._rate_limit_until = time.monotonic() + backoff
+                    await self._requeue_chunk(chunk)
+                    logger.warning(
+                        "Groq rate limit (429). Backing off %.0fs; transcription will resume.",
+                        backoff,
+                    )
+                else:
+                    logger.exception("Groq Whisper transcription failed: %s", e)
+                    await self._requeue_chunk(chunk)
+                return
+
+            text, segments = _transcription_text_and_segments(transcription)
+            text_clean = text.strip()
 
         if not text_clean:
             logger.debug("⏭ Whisper returned empty text (chunk #%d)", self._total_chunks)

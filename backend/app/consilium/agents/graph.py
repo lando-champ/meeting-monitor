@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
@@ -8,6 +9,12 @@ from bson import ObjectId
 from langgraph.graph import END, StateGraph
 
 from app.consilium.database import get_db
+from .checkpointer import (
+    get_consilium_checkpointer,
+    reset_consilium_checkpointer_for_tests,
+)
+from app.consilium.services.meeting_signals import mark_meeting_signal_processed
+from app.consilium.services.monitoring_prefetch import prefetch_monitoring_context
 from .monitoring_agent import (
     _stable_hash,
     build_activity_events,
@@ -201,6 +208,58 @@ def planning_node(state: ProjectState) -> Dict[str, Any]:
     }
 
 
+def planning_merge(state: ProjectState) -> Dict[str, Any]:
+    u_p = planning_node(state)
+    merged = {**dict(state), **u_p}
+    u_e = execution_node(merged)
+    return {**u_p, **u_e}
+
+
+def monitoring_merge(state: ProjectState) -> Dict[str, Any]:
+    s0: Dict[str, Any] = dict(state)
+    u_m = monitoring_node(s0)
+    s1 = {**s0, **u_m}
+    u_e = execution_node(s1)
+    s2 = {**s1, **u_e}
+    gr = _route_after_execution_github(s2)
+    out: Dict[str, Any] = {**u_m, **u_e}
+    if gr == "risk":
+        u_r = risk_node(s2)
+        out = {**out, **u_r}
+        s3 = {**s2, **u_r}
+        fr = _route_after_risk(s3)
+        out["_graph_next"] = fr
+    elif gr == "notify":
+        out["_graph_next"] = "notify"
+    else:
+        out["_graph_next"] = "end"
+    return out
+
+
+def replan_merge(state: ProjectState) -> Dict[str, Any]:
+    u_r = replanning_node(state)
+    merged = {**dict(state), **u_r}
+    if not merged.get("replan_changed", True):
+        return u_r
+    u_e = execution_node(merged)
+    return {**u_r, **u_e}
+
+
+def _route_after_monitoring_merge(state: ProjectState) -> str:
+    nxt = str(state.get("_graph_next") or "end")
+    if nxt == "replan":
+        return "replan_merge"
+    if nxt == "notify":
+        return "notify"
+    return "end"
+
+
+def _route_after_replan_merge(state: ProjectState) -> str:
+    if state.get("replan_changed", True):
+        return "notify"
+    return "end"
+
+
 def _route_after_execution_github(state: ProjectState) -> str:
     """After monitor + execution: use decision layer + guards."""
     d = decide_next_action(state)
@@ -226,35 +285,63 @@ def _route_after_risk(state: ProjectState) -> str:
     return "end"
 
 
-def _route_after_replan(state: ProjectState) -> str:
-    if not state.get("replan_changed", True):
-        return "end"
-    return "exec_replan"
-
-
 builder = StateGraph(ProjectState)
-builder.add_node("plan", planning_node)
-builder.add_node("exec_plan", execution_node)
-builder.add_node("monitor", monitoring_node)
-builder.add_node("exec_github", execution_node)
-builder.add_node("risk", risk_node)
-builder.add_node("replan", replanning_node)
-builder.add_node("exec_replan", execution_node)
+builder.add_node("planning_merge", planning_merge)
+builder.add_node("monitoring_merge", monitoring_merge)
+builder.add_node("replan_merge", replan_merge)
 builder.add_node("notify", communication_node)
-builder.set_entry_point("plan")
-builder.add_edge("plan", "exec_plan")
-builder.add_edge("exec_plan", "monitor")
-builder.add_edge("monitor", "exec_github")
+builder.set_entry_point("planning_merge")
+builder.add_edge("planning_merge", "monitoring_merge")
 builder.add_conditional_edges(
-    "exec_github",
-    _route_after_execution_github,
-    {"risk": "risk", "notify": "notify", "end": END},
+    "monitoring_merge",
+    _route_after_monitoring_merge,
+    {"replan_merge": "replan_merge", "notify": "notify", "end": END},
 )
-builder.add_conditional_edges("risk", _route_after_risk, {"replan": "replan", "notify": "notify", "end": END})
-builder.add_conditional_edges("replan", _route_after_replan, {"exec_replan": "exec_replan", "end": END})
-builder.add_edge("exec_replan", "notify")
+builder.add_conditional_edges(
+    "replan_merge",
+    _route_after_replan_merge,
+    {"notify": "notify", "end": END},
+)
 builder.add_edge("notify", END)
-graph = builder.compile()
+
+_compiled_graph = None
+_compile_lock = threading.Lock()
+
+
+def get_compiled_graph():
+    global _compiled_graph
+    if _compiled_graph is None:
+        with _compile_lock:
+            if _compiled_graph is None:
+                _compiled_graph = builder.compile(checkpointer=get_consilium_checkpointer())
+    return _compiled_graph
+
+
+def reset_consilium_graph_for_tests() -> None:
+    """Drop compiled graph + checkpointer singleton (pytest)."""
+    global _compiled_graph
+    with _compile_lock:
+        _compiled_graph = None
+    reset_consilium_checkpointer_for_tests()
+
+
+class _CompiledGraphProxy:
+    __slots__ = ()
+
+    def invoke(self, *args: Any, **kwargs: Any) -> Any:
+        return get_compiled_graph().invoke(*args, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(get_compiled_graph(), name)
+
+
+graph = _CompiledGraphProxy()
+
+_INTERNAL_GRAPH_KEYS = frozenset({"_graph_next", "_meeting_signal_mongo_id"})
+
+
+def _strip_internal_graph_keys(state: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: v for k, v in state.items() if k not in _INTERNAL_GRAPH_KEYS}
 
 
 def build_graph_state(
@@ -317,6 +404,9 @@ def build_graph_state(
         "allowed_tools": workspace.get("allowed_tools"),
         "tool_results": list(workspace.get("tool_results") or []),
         "external_events": list(workspace.get("external_events") or []),
+        "meeting_signal": dict(workspace.get("meeting_signal") or {}),
+        "transcript_rag_evidence": str(workspace.get("transcript_rag_evidence") or ""),
+        "blocker_recurrence_score": float(workspace.get("blocker_recurrence_score") or 0.0),
     }
 
 
@@ -331,8 +421,15 @@ async def run_graph_for_workspace(
     if not workspace:
         return {}
 
+    prefetch = await prefetch_monitoring_context(db, workspace_id=workspace_id, workspace=workspace)
     initial_state = build_graph_state(workspace_id, workspace, github_events=github_events)
-    final_state = graph.invoke(initial_state)
+    initial_state.update(prefetch)
+
+    final_raw = graph.invoke(
+        initial_state,
+        config={"configurable": {"thread_id": workspace_id}},
+    )
+    final_state = _strip_internal_graph_keys(dict(final_raw))
 
     tasks = list(final_state.get("tasks") or [])
     kanban = dict(final_state.get("kanban") or _derive_kanban(tasks))
@@ -396,6 +493,11 @@ async def run_graph_for_workspace(
         updates["github.repo_full_name"] = github_repo["repo_full_name"]
 
     await workspaces.update_one({"_id": oid}, {"$set": updates})
+
+    sig_oid = prefetch.get("_meeting_signal_mongo_id") or initial_state.get("_meeting_signal_mongo_id")
+    if sig_oid:
+        await mark_meeting_signal_processed(db, str(sig_oid))
+
     return final_state
 
 

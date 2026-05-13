@@ -27,3 +27,15 @@ dist-ssr
 .env
 .env.local
 backend/.env
+
+# Python / test artifacts (repo root or stray paths)
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Frontend tooling artifacts
+*.tsbuildinfo
+coverage/

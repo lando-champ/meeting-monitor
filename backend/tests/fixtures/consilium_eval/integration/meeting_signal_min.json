@@ -1,0 +1,10 @@
+{
+  "version": "1",
+  "project_id": "507f1f77bcf86cd799439011",
+  "meeting_id": "507f1f77bcf86cd799439012",
+  "summary_excerpt": "Test excerpt",
+  "confirmed_tasks": ["Do X"],
+  "blockers": [],
+  "scope_mentions": ["scope creep"],
+  "source": "post_meeting_intelligence"
+}

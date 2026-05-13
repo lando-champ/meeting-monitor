@@ -1,0 +1,12 @@
+{
+  "project_complete": false,
+  "monitoring_changed": true,
+  "execution_changed": false,
+  "blockers": [{"message": "x"}],
+  "tasks": [{"id": "t1", "title": "A", "status": "todo"}],
+  "kanban": {"t1": "todo"},
+  "github_events": [],
+  "risks": [],
+  "task_graph": {"nodes": [], "edges": []},
+  "expect": {"route": "risk"}
+}

@@ -1,0 +1,13 @@
+{
+  "workspace_id": "ws1",
+  "tasks": [
+    {"id": "t1", "title": "A", "status": "blocked"},
+    {"id": "t2", "title": "B", "status": "todo"}
+  ],
+  "kanban": {"t1": "blocked", "t2": "todo"},
+  "task_graph": {"nodes": [], "edges": []},
+  "github_events": [],
+  "risks": [],
+  "blockers": [],
+  "expect": {"risk_score_min": 0.05}
+}

@@ -40,8 +40,9 @@ from __future__ import annotations
 import json
 import logging
 import os
-import urllib.request
+import subprocess
 import urllib.error
+import urllib.request
 from typing import Any, Dict, List, Optional
 
 _log = logging.getLogger(__name__)
@@ -116,6 +117,146 @@ class MCPClient:
         return self._rpc("tools/call", {"name": tool_name, "arguments": arguments})
 
 
+def _encode_mcp_message(payload: Dict[str, Any]) -> bytes:
+    body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    return f"Content-Length: {len(body)}\r\n\r\n".encode("ascii") + body
+
+
+def _read_one_mcp_message(stream) -> Dict[str, Any]:
+    """Read a single MCP message (Content-Length framed) from a binary stream."""
+    headers: List[bytes] = []
+    while True:
+        line = stream.readline()
+        if not line:
+            raise RuntimeError("MCP stdio: unexpected EOF reading headers")
+        if line in (b"\r\n", b"\n"):
+            break
+        headers.append(line)
+    hdr = b"".join(headers).decode("latin-1", errors="replace")
+    length = None
+    for hline in hdr.split("\r\n"):
+        if hline.lower().startswith("content-length:"):
+            try:
+                length = int(hline.split(":", 1)[1].strip())
+            except ValueError:
+                length = None
+            break
+    if length is None or length < 0:
+        raise RuntimeError(f"MCP stdio: missing Content-Length in {hdr!r}")
+    body = stream.read(length)
+    if len(body) != length:
+        raise RuntimeError("MCP stdio: short read on message body")
+    return json.loads(body.decode("utf-8"))
+
+
+def _read_until_jsonrpc_id(stream, expect_id: int, max_messages: int = 32) -> Dict[str, Any]:
+    for _ in range(max_messages):
+        msg = _read_one_mcp_message(stream)
+        if msg.get("id") == expect_id:
+            return msg
+    raise RuntimeError(f"MCP stdio: no response with id={expect_id}")
+
+
+def mcp_stdio_call_tool(
+    argv: List[str],
+    tool_name: str,
+    arguments: Dict[str, Any],
+    *,
+    timeout: float = 45.0,
+) -> Dict[str, Any]:
+    """
+    Minimal MCP session over stdio: initialize → notifications/initialized → tools/call.
+    `argv` is the server command (e.g. from MCP_GITHUB_COMMAND JSON list).
+    """
+    if not argv:
+        raise RuntimeError("empty MCP stdio argv")
+    proc = subprocess.Popen(
+        argv,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        bufsize=0,
+    )
+    assert proc.stdin and proc.stdout
+    try:
+        mid = 1
+        init = {
+            "jsonrpc": "2.0",
+            "id": mid,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "meeting-monitor", "version": "1.0.0"},
+            },
+        }
+        proc.stdin.write(_encode_mcp_message(init))
+        proc.stdin.flush()
+        init_resp = _read_until_jsonrpc_id(proc.stdout, mid)
+        if isinstance(init_resp, dict) and init_resp.get("error"):
+            raise RuntimeError(f"MCP initialize error: {init_resp.get('error')}")
+        mid += 1
+        note = {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}
+        proc.stdin.write(_encode_mcp_message(note))
+        proc.stdin.flush()
+        call = {
+            "jsonrpc": "2.0",
+            "id": mid,
+            "method": "tools/call",
+            "params": {"name": tool_name, "arguments": arguments},
+        }
+        proc.stdin.write(_encode_mcp_message(call))
+        proc.stdin.flush()
+        resp = _read_until_jsonrpc_id(proc.stdout, mid)
+        if isinstance(resp, dict) and resp.get("error"):
+            err = resp["error"]
+            raise RuntimeError(f"MCP tools/call error: {err}")
+        return resp.get("result") or {}
+    finally:
+        try:
+            proc.stdin.close()
+        except Exception:
+            pass
+        try:
+            proc.terminate()
+            proc.wait(timeout=min(timeout, 5.0))
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
+
+def _stdio_argv_for_server(server_name: str) -> List[str]:
+    """JSON list in MCP_GITHUB_COMMAND / MCP_SEARCH_COMMAND (settings or env)."""
+    try:
+        from app.core.config import settings
+    except Exception:
+        settings = None  # type: ignore[assignment]
+
+    def _raw(env_name: str, setting_attr: str) -> str:
+        v = os.environ.get(env_name, "")
+        if v.strip():
+            return v
+        if settings is not None:
+            return str(getattr(settings, setting_attr, "") or "")
+        return ""
+
+    raw = ""
+    sn = server_name.lower()
+    if sn == "github":
+        raw = _raw("MCP_GITHUB_COMMAND", "MCP_GITHUB_COMMAND")
+    elif sn in ("search", "ddg", "duckduckgo"):
+        raw = _raw("MCP_SEARCH_COMMAND", "MCP_SEARCH_COMMAND")
+    raw = (raw or "").strip()
+    if not raw:
+        return []
+    parsed = json.loads(raw)
+    if not isinstance(parsed, list) or not all(isinstance(x, str) for x in parsed):
+        raise ValueError("MCP_*_COMMAND must be a JSON array of strings")
+    return list(parsed)
+
+
 # ──────────────────────────────────────────────────────────────────
 # High-level tool executor
 # ──────────────────────────────────────────────────────────────────
@@ -173,13 +314,48 @@ class MCPToolExecutor:
         if not operation:
             return _err("missing operation")
 
-        server_url = self._servers.get(server_name)
-        if not server_url:
-            return _err(f"unknown MCP server: {server_name!r}")
-
         # Inject workspace / repo context into params so MCP servers
         # don't have to re-fetch it on every call.
         _inject_context(params, server_name, ctx)
+
+        try:
+            from app.core.config import settings as _settings
+        except Exception:
+            _settings = None  # type: ignore[assignment]
+
+        transport = (os.environ.get("MCP_TRANSPORT") or "").strip().lower()
+        if not transport and _settings is not None:
+            transport = str(getattr(_settings, "MCP_TRANSPORT", "http") or "http").strip().lower()
+        if not transport:
+            transport = "http"
+
+        if transport == "off":
+            return _err("MCP_TRANSPORT=off disables MCP tool calls")
+
+        if transport == "stdio":
+            try:
+                argv = _stdio_argv_for_server(server_name)
+            except (json.JSONDecodeError, ValueError) as exc:
+                return _err(f"invalid MCP stdio command JSON: {exc}")
+            if argv:
+                to = 45.0
+                if _settings is not None:
+                    try:
+                        to = float(getattr(_settings, "MCP_STDIO_TIMEOUT_SECONDS", 45.0) or 45.0)
+                    except (TypeError, ValueError):
+                        to = 45.0
+                try:
+                    result = mcp_stdio_call_tool(argv, operation, params, timeout=to)
+                    _log.info("mcp_tool stdio server=%s op=%s ok=True", server_name, operation)
+                    return {"ok": True, "status": "ok", "data": result, "error": None}
+                except Exception as exc:
+                    _log.warning("mcp_tool stdio server=%s op=%s error=%s", server_name, operation, exc)
+                    return _err(str(exc))
+            _log.info("mcp_tool stdio: no argv for server=%s; falling back to HTTP", server_name)
+
+        server_url = self._servers.get(server_name)
+        if not server_url:
+            return _err(f"unknown MCP server: {server_name!r}")
 
         client = MCPClient(server_url, api_key=self._api_key)
         try:

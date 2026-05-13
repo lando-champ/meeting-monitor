@@ -19,15 +19,18 @@ import { format } from "date-fns";
 import { useAuth } from "@/context/AuthContext";
 import {
   getMeetingDetail,
+  getMeetingBotStatus,
   stopMeeting,
   appendBrowserTranscriptSegments,
   generateMeetingSummary,
   deleteMeeting,
   type MeetingBotDetail,
+  type MeetingBotStatus,
 } from "@/lib/api";
 import LiveMeetingTranscript, {
   type LiveMeetingTranscriptRef,
 } from "@/components/meeting/LiveMeetingTranscript";
+import ServerLiveMeetingTranscript from "@/components/meeting/ServerLiveMeetingTranscript";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -54,6 +57,7 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
   const [deleting, setDeleting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const transcriptRef = useRef<LiveMeetingTranscriptRef>(null);
+  const [botStatus, setBotStatus] = useState<MeetingBotStatus | null>(null);
 
   const basePath =
     role === "manager"
@@ -86,10 +90,21 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
     return () => clearInterval(interval);
   }, [apiDetail?.meeting.status, meetingId, token]);
 
+  useEffect(() => {
+    if (!token || !meetingId || !apiDetail || apiDetail.meeting.status !== "live") {
+      setBotStatus(null);
+      return;
+    }
+    getMeetingBotStatus(token, meetingId).then(setBotStatus).catch(() => setBotStatus(null));
+  }, [token, meetingId, apiDetail?.meeting.status]);
+
   const handleStopMeeting = async () => {
     if (!token || !meetingId) return;
     setStopping(true);
     try {
+      transcriptRef.current?.finalizeBeforeSave?.();
+      // Let Web Speech emit a last final result after recognition.stop().
+      await new Promise((r) => setTimeout(r, 150));
       const toSave = transcriptRef.current?.collectTextsForSave() ?? [];
       if (toSave.length > 0) {
         await appendBrowserTranscriptSegments(token, meetingId, toSave);
@@ -323,14 +338,45 @@ const CorporateMeetingDetails = ({ role }: CorporateMeetingDetailsProps) => {
             </Card>
           </TabsContent>
 
-          <TabsContent value="transcripts" className="mt-4">
+          {/* forceMount: keep Web Speech state alive when user switches tabs (save runs on End meeting). */}
+          <TabsContent value="transcripts" className="mt-4" forceMount>
             <div className="space-y-4">
+              {!isEnded && meetingId && isLive && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Server live transcript</CardTitle>
+                    <CardDescription>
+                      Streamed from the meeting bot STT pipeline (same segments as saved to the database).
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {botStatus && (
+                      <p className="text-xs text-muted-foreground">
+                        Bot on this API:{" "}
+                        {!botStatus.bot_available
+                          ? "unavailable"
+                          : botStatus.bot_running
+                            ? botStatus.bot_audio_streaming
+                              ? "running · audio streaming"
+                              : "running · audio paused"
+                            : "not running"}
+                      </p>
+                    )}
+                    <ServerLiveMeetingTranscript
+                      meetingId={meetingId}
+                      enabled={isLive}
+                      accessToken={token}
+                    />
+                  </CardContent>
+                </Card>
+              )}
               {!isEnded && meetingId && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-base">Live transcription</CardTitle>
                     <CardDescription>
-                      Use your microphone and the browser Web Speech API. Text is saved when you click End meeting.
+                      Use your microphone and the browser Web Speech API. Text is saved when you click End meeting
+                      (you can switch tabs; this panel stays active in the background).
                     </CardDescription>
                   </CardHeader>
                   <CardContent>

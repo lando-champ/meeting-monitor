@@ -10,6 +10,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
 
+from app.core.config import settings
+from app.core.security import decode_access_token
 from app.stt.stt_pipeline import STTPipeline
 
 router = APIRouter()
@@ -81,6 +83,12 @@ ws_manager = WebSocketManager()
 @router.websocket("/audio/{meeting_id}")
 async def websocket_audio(websocket: WebSocket, meeting_id: str):
     """Bot sends raw PCM here. We process and STT; transcript is broadcast to /ws/meeting/{id}/live."""
+    expected = (getattr(settings, "MEETING_AUDIO_WS_SECRET", None) or "").strip()
+    if expected:
+        got = (websocket.query_params.get("ws_secret") or "").strip()
+        if got != expected:
+            await websocket.close(code=1008)
+            return
     await websocket.accept()
     logger.info("Bot audio WebSocket connected for meeting_id=%s", meeting_id)
     rx_count = 0
@@ -110,6 +118,12 @@ async def websocket_audio(websocket: WebSocket, meeting_id: str):
 @router.websocket("/meeting/{meeting_id}/live")
 async def websocket_meeting_live(websocket: WebSocket, meeting_id: str):
     """Frontend connects here to receive live transcript messages."""
+    if getattr(settings, "MEETING_LIVE_WS_REQUIRE_AUTH", False):
+        token = (websocket.query_params.get("access_token") or "").strip()
+        payload = decode_access_token(token) if token else None
+        if not payload:
+            await websocket.close(code=1008)
+            return
     await websocket.accept()
     ws_manager.subscribe(meeting_id, websocket)
     try:

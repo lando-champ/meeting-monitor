@@ -17,10 +17,29 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
-import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recharts';
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+  Tooltip,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+} from 'recharts';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { getProject, listMeetings, type ApiTask, type ProjectMember } from '@/lib/api';
+import {
+  getProject,
+  listMeetings,
+  getProjectAnalyticsTimeseries,
+  type ApiTask,
+  type ProjectMember,
+  type ProjectAnalyticsTimeseries,
+} from '@/lib/api';
 
 const ManagerAnalytics = () => {
   const { token } = useAuth();
@@ -30,22 +49,26 @@ const ManagerAnalytics = () => {
   const [memberDetails, setMemberDetails] = useState<ProjectMember[]>([]);
   const [meetingsCount, setMeetingsCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [timeseries, setTimeseries] = useState<ProjectAnalyticsTimeseries | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!token || !workspaceId) return;
     setLoading(true);
     try {
-      const [project, meetingsRes] = await Promise.all([
+      const [project, meetingsRes, ts] = await Promise.all([
         getProject(token, workspaceId),
         listMeetings(token, workspaceId),
+        getProjectAnalyticsTimeseries(token, workspaceId, 8).catch(() => null),
       ]);
       setTasks(project.tasks ?? []);
       setMemberDetails(project.member_details ?? []);
       setMeetingsCount((meetingsRes.meetings ?? []).filter((m) => m.status === 'ended').length);
+      setTimeseries(ts);
     } catch {
       setTasks([]);
       setMemberDetails([]);
       setMeetingsCount(0);
+      setTimeseries(null);
     } finally {
       setLoading(false);
     }
@@ -65,6 +88,18 @@ const ManagerAnalytics = () => {
     { name: 'In Review', value: tasks.filter((t) => t.status === 'in_review').length, color: 'hsl(38 92% 50%)' },
     { name: 'Blockers', value: tasks.filter((t) => t.status === 'blockers').length, color: 'hsl(var(--destructive))' },
   ].filter((d) => d.value > 0);
+  const velocityLabel = timeseries
+    ? `Avg ${timeseries.velocity_completed_per_week_avg} tasks completed / week (rolling window)`
+    : '';
+
+  const burndownChartData =
+    timeseries?.weeks.map((w) => ({
+      label: w.week_start.slice(5),
+      open: w.open_at_week_end,
+      completed: w.completed,
+      created: w.created,
+    })) ?? [];
+
   const memberMetrics = memberDetails.map((member) => {
     const memberTasks = tasks.filter((t) => t.assignee_id === member.id);
     const completed = memberTasks.filter((t) => t.status === 'done').length;
@@ -143,6 +178,44 @@ const ManagerAnalytics = () => {
             </CardContent>
           </Card>
         </div>
+
+        {!loading && timeseries && burndownChartData.length > 0 && (
+          <Card className="rounded-premium-lg shadow-neumorphic border-0 overflow-hidden">
+            <CardHeader>
+              <CardTitle>Velocity and backlog</CardTitle>
+              <CardDescription>{velocityLabel}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={burndownChartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={32} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'hsl(var(--card))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '12px',
+                      }}
+                    />
+                    <Legend />
+                    <Line type="monotone" dataKey="completed" name="Completed" stroke="hsl(var(--success))" strokeWidth={2} dot />
+                    <Line type="monotone" dataKey="created" name="Created" stroke="hsl(var(--primary))" strokeWidth={2} dot />
+                    <Line
+                      type="monotone"
+                      dataKey="open"
+                      name="Open (est.)"
+                      stroke="hsl(var(--muted-foreground))"
+                      strokeWidth={2}
+                      dot
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {!loading && (statusCounts.length > 0) && (
           <Card className="rounded-premium-lg shadow-neumorphic border-0 overflow-hidden">

@@ -250,6 +250,21 @@ export async function getMeetingDetail(token: string, meetingId: string): Promis
   return res.json();
 }
 
+export interface MeetingBotStatus {
+  meeting_id: string;
+  bot_available: boolean;
+  bot_running: boolean;
+  bot_audio_streaming: boolean;
+}
+
+export async function getMeetingBotStatus(token: string, meetingId: string): Promise<MeetingBotStatus> {
+  const res = await fetch(`${apiBaseUrl}/api/v1/meetings/${meetingId}/bot-status`, {
+    headers: getAuthHeaders(token),
+  });
+  if (!res.ok) throw new Error("Failed to load bot status");
+  return res.json();
+}
+
 export async function deleteMeeting(
   token: string,
   meetingId: string
@@ -443,6 +458,33 @@ export async function getProject(token: string, projectId: string): Promise<ApiP
     headers: getAuthHeaders(token),
   });
   if (!res.ok) throw new Error("Failed to load project");
+  return res.json();
+}
+
+export interface AnalyticsWeekBucket {
+  week_start: string;
+  week_end: string;
+  created: number;
+  completed: number;
+  open_at_week_end: number;
+}
+
+export interface ProjectAnalyticsTimeseries {
+  project_id: string;
+  weeks: AnalyticsWeekBucket[];
+  velocity_completed_per_week_avg: number;
+}
+
+export async function getProjectAnalyticsTimeseries(
+  token: string,
+  projectId: string,
+  weeks: number = 8,
+): Promise<ProjectAnalyticsTimeseries> {
+  const q = new URLSearchParams({ weeks: String(weeks) });
+  const res = await fetch(`${apiBaseUrl}/api/v1/projects/${projectId}/analytics/timeseries?${q}`, {
+    headers: getAuthHeaders(token),
+  });
+  if (!res.ok) throw new Error("Failed to load analytics");
   return res.json();
 }
 

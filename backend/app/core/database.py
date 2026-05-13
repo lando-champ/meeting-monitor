@@ -68,6 +68,8 @@ async def create_indexes():
     await ensure_index(database.attendance_records, "participant_id")
     await ensure_index(database.summaries, "meeting_id")
     await ensure_index(database.action_items, "meeting_id")
+    await ensure_index(database.meeting_signals, "project_id")
+    await ensure_index(database.meeting_signals, [("project_id", 1), ("processed", 1), ("created_at", -1)])
 
     # Tasks collection indexes
     await ensure_index(database.tasks, "project_id")

@@ -210,6 +210,7 @@ def compute_project_health(state: Dict[str, Any]) -> Dict[str, Any]:
 
     br = _clamp01(blocked / max(total, 1))
     dr = _clamp01(delayed / max(total, 1))
+    recurrence = _clamp01(float(state.get("blocker_recurrence_score") or 0.0))
 
     risk_score = _clamp01(
         0.22 * (1.0 - progress)
@@ -218,6 +219,7 @@ def compute_project_health(state: Dict[str, Any]) -> Dict[str, Any]:
         + 0.18 * depth_norm
         + 0.22 * risk_sev_component
         + 0.05 * freshness_factor
+        + 0.12 * recurrence
     )
     delay_probability = _clamp01(
         0.28 * dr
@@ -235,6 +237,7 @@ def compute_project_health(state: Dict[str, Any]) -> Dict[str, Any]:
         "depth_norm": round(depth_norm, 4),
         "github_fresh": fresh,
         "risk_count": len(risks),
+        "blocker_recurrence": round(recurrence, 4),
     }
     out = {
         "risk_score": round(risk_score, 4),

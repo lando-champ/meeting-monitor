@@ -1,0 +1,6 @@
+{
+  "snippet": "We are blocked on the payment API dependency for days.",
+  "blockers": [{"message": "blocked on the payment API", "severity": "high"}],
+  "meeting_signal": {"summary_excerpt": "payment API integration risk"},
+  "expect": {"score_min": 0.15}
+}

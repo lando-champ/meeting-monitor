@@ -28,3 +28,6 @@ websockets
 faiss-cpu
 sentence-transformers
 pytest
+# Consilium LangGraph + Mongo checkpoints (graph.compile(checkpointer=...))
+langgraph>=1.1.1,<1.2
+langgraph-checkpoint-mongodb>=0.3.0

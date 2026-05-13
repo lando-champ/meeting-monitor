@@ -86,6 +86,25 @@ class Settings(BaseSettings):
     # Board-sync RAG: retrieve from latest meeting only
     KANBAN_RAG_BOARD_SYNC_ENABLED: bool = True
     KANBAN_RAG_BOARD_MAX_TRANSCRIPT_CHARS: int = 10000
+    # When true, meeting /ask can pull project-wide transcript RAG context (requires embeddings + FAISS).
+    TRANSCRIPT_RAG_FOR_QA_ENABLED: bool = False
+    # When true, workspace copilot snapshot may include a project-wide RAG snippet (same deps as QA).
+    TRANSCRIPT_RAG_FOR_COPILOT_ENABLED: bool = False
+    # Consilium monitoring: project transcript RAG for blocker recurrence (requires project_id + embeddings).
+    MONITORING_TRANSCRIPT_RAG_ENABLED: bool = False
+    TRANSCRIPT_RAG_QA_TOP_K: int = 8
+    TRANSCRIPT_RAG_QA_MAX_CONTEXT_CHARS: int = 8000
+    # Optional cache directory for serialized project transcript indexes (empty = no disk cache).
+    TRANSCRIPT_RAG_CACHE_DIR: str = ""
+
+    # LangGraph Mongo checkpoints (optional TTL in seconds on checkpoint collections).
+    LANGGRAPH_CHECKPOINT_TTL_SECONDS: Optional[int] = None
+
+    # MCP: off|http|stdio — stdio uses subprocess JSON-RPC (see backend README).
+    MCP_TRANSPORT: str = "http"
+    MCP_GITHUB_COMMAND: str = ""  # JSON list argv, e.g. '["npx","-y","@modelcontextprotocol/server-github"]'
+    MCP_SEARCH_COMMAND: str = ""
+    MCP_STDIO_TIMEOUT_SECONDS: float = 45.0
 
     # CORS - accept list or comma-separated / JSON string from env
     CORS_ORIGINS: List[str] = [
@@ -124,6 +143,9 @@ class Settings(BaseSettings):
     # Meeting bot: backend URL for WebSocket and API (bot connects here)
     # If not set in env, bot_manager will fall back to http://localhost:{PORT}
     BACKEND_URL: str = ""
+    # If set, bot audio WS must include ?ws_secret=<value>. Live transcript WS may require ?access_token=<jwt>.
+    MEETING_AUDIO_WS_SECRET: str = ""
+    MEETING_LIVE_WS_REQUIRE_AUTH: bool = False
 
     # Audio capture & STT (must match what bot sends)
     AUDIO_SAMPLE_RATE: int = 16000
@@ -141,6 +163,9 @@ class Settings(BaseSettings):
     STT_ACCURACY_MODE: bool = True
     # Default Whisper model for streaming chunks.
     STT_TRANSCRIBE_MODEL: str = "whisper-large-v3"
+    # groq (default) | faster_whisper — local path requires optional ``pip install faster-whisper``.
+    STT_BACKEND: str = "groq"
+    STT_FASTER_WHISPER_MODEL: str = "base"
     # Extra domain terms to bias Whisper toward correct spelling/pronunciation.
     STT_CONTEXT_HINTS: str = "WebSocket, analytics, Vikram, project scope, testing"
     # Number of previous accepted transcript segments to pass as prompt context.

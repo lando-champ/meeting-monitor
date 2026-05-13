@@ -4,6 +4,7 @@ Start/stop bot per meeting; run audio stream and participant monitoring.
 import asyncio
 import logging
 from typing import Dict, Optional
+from urllib.parse import urlencode
 
 from app.core.config import settings
 from app.bot.jitsi_meet_bot import JitsiMeetBot
@@ -21,7 +22,11 @@ _lock = asyncio.Lock()
 def _audio_callback_url(meeting_id: str) -> str:
     backend_url = settings.BACKEND_URL or f"http://localhost:{settings.PORT}"
     ws_url = backend_url.replace("http://", "ws://").replace("https://", "wss://").rstrip("/")
-    return ws_url + "/api/v1/ws/audio/" + meeting_id
+    path = ws_url + "/api/v1/ws/audio/" + meeting_id
+    sec = (getattr(settings, "MEETING_AUDIO_WS_SECRET", None) or "").strip()
+    if sec:
+        return path + "?" + urlencode({"ws_secret": sec})
+    return path
 
 
 async def _safe_audio_stream(meeting_id: str, bot: JitsiMeetBot, callback_url: str) -> None:

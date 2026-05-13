@@ -10,7 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Mic, MicOff } from "lucide-react";
 
 export interface LiveMeetingTranscriptRef {
-  /** Final lines plus any current interim text (for saving before ending the meeting). */
+  /** Stop the mic, flush interim to lines, and release the stream (call before saving). */
+  finalizeBeforeSave: () => void;
+  /** Final lines plus any current interim text (for persisting). */
   collectTextsForSave: () => string[];
 }
 
@@ -68,14 +70,6 @@ const LiveMeetingTranscript = forwardRef<LiveMeetingTranscriptRef, LiveMeetingTr
       }
     };
 
-    useImperativeHandle(ref, () => ({
-      collectTextsForSave: () => {
-        const interim = interimTextRef.current.trim();
-        const base = [...linesTextRef.current];
-        return interim ? [...base, interim] : base;
-      },
-    }));
-
     const scheduleRestart = useCallback((recognition: SpeechRecognition) => {
       clearRestartTimer();
       restartTimerRef.current = setTimeout(() => {
@@ -104,6 +98,12 @@ const LiveMeetingTranscript = forwardRef<LiveMeetingTranscriptRef, LiveMeetingTr
       listeningIntentRef.current = false;
       clearRestartTimer();
       setMicOn(false);
+      // Promote any pending interim so "End meeting" / collectTextsForSave does not lose in-flight words.
+      const interim = interimTextRef.current.trim();
+      if (interim) {
+        linesTextRef.current = [...linesTextRef.current, interim];
+        setLines((prev) => [...prev, { id: nextId(), text: interim }]);
+      }
       setInterimBrowser("");
       interimTextRef.current = "";
       setSpeechError(null);
@@ -117,6 +117,21 @@ const LiveMeetingTranscript = forwardRef<LiveMeetingTranscriptRef, LiveMeetingTr
       micStreamRef.current?.getTracks().forEach((t) => t.stop());
       micStreamRef.current = null;
     }, []);
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        finalizeBeforeSave: () => {
+          stopBrowserMic();
+        },
+        collectTextsForSave: () => {
+          const interim = interimTextRef.current.trim();
+          const base = [...linesTextRef.current];
+          return interim ? [...base, interim] : base;
+        },
+      }),
+      [stopBrowserMic],
+    );
 
     const startBrowserMic = useCallback(async () => {
       const Ctor = getSpeechRecognitionCtor();

@@ -1,0 +1,5 @@
+{
+  "kanban": {"todo": [{"id": "x1", "title": "T"}], "done": []},
+  "tasks": [{"id": "x1", "title": "T", "status": "todo"}],
+  "expect": {"x1": "todo"}
+}
