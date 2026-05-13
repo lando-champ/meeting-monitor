@@ -1,55 +1,130 @@
-# Meeting Sense
+# CONSILIUM
+### AI-Powered Project Intelligence Platform
 
-## Project info
+CONSILIUM is an agentic AI-powered project management platform that automates project planning, monitoring, workflow synchronization, and risk detection using multi-agent orchestration.
 
-## How can I edit this code?
+The platform combines:
+- AI-generated PRDs
+- Intelligent project planning
+- GitHub-integrated Kanban automation
+- Meeting intelligence
+- Risk monitoring
+- LangGraph-based autonomous workflows
 
-**Use your preferred IDE**
+---
 
-If you want to work locally using your own IDE, you can clone this repo and push changes.
+# 🚀 Features
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+## 📄 Requirements Agent
+- Generates structured PRDs from product briefs
+- Performs competitor research and analysis
+- Converts kickoff meeting transcripts into requirement documents
 
-Follow these steps:
+## 🧠 Planning Agent
+- Automatically creates:
+  - Roadmaps
+  - Task graphs
+  - Dependencies
+  - Kanban workflows
+- Generates structured project plans using AI reasoning
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+## 📋 Intelligent Kanban Board
+- Drag-and-drop task management
+- Automatic task status synchronization
+- AI-assisted task organization
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+## 🔗 GitHub Integration
+- GitHub OAuth & webhook support
+- Commit-to-task mapping
+- PR-based Kanban updates
+- CI/CD-aware task progression
 
-# Step 3: Install the necessary dependencies.
-npm i
+## 🎤 Meeting Intelligence
+- Jitsi meeting bot integration
+- Speech-to-text transcription pipeline
+- Transcript summarization
+- Action-item extraction
+- Blocker detection
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
+## ⚠️ Monitoring Agent
+- Continuous project monitoring
+- Risk prediction and scoring
+- Stale task detection
+- Automated workflow reconciliation
 
-**Edit a file directly in GitHub**
+## 📊 Analytics Dashboard
+- Sprint velocity tracking
+- Burndown monitoring
+- Risk visualization
+- Activity analytics
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+---
 
-**Use GitHub Codespaces**
+# 🏗️ System Architecture
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+CONSILIUM uses a LangGraph-based multi-agent architecture consisting of:
 
-## What technologies are used for this project?
+| Agent | Responsibility |
+|---|---|
+| Requirements Agent | PRD generation & research |
+| Planning Agent | Task decomposition & roadmap planning |
+| Monitoring Agent | Risk detection & workflow synchronization |
 
-This project is built with:
+The platform follows a plan-and-execute reasoning loop with:
+- Persistent memory
+- Conditional routing
+- Human-in-the-loop approvals
+- Event-driven monitoring
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+---
 
-## How can I deploy this project?
+# 🛠️ Tech Stack
 
-Build the app and serve the static output from `dist`.
+| Layer | Technology |
+|---|---|
+| Frontend | React 18 + TypeScript + Tailwind CSS |
+| Backend | FastAPI |
+| Agent Orchestration | LangGraph |
+| Database | MongoDB Atlas |
+| Vector Database | FAISS |
+| Speech-to-Text | faster-whisper |
+| Embeddings | sentence-transformers |
+| LLMs | Ollama llama3.1:70b & 8b |
+| Integrations | GitHub MCP Server |
+
+---
+
+# 🧠 AI Capabilities
+
+## Agentic Workflows
+- Autonomous decision-making
+- Multi-step reasoning
+- Continuous monitoring
+- Dynamic workflow execution
+
+## Retrieval-Augmented Generation (RAG)
+- Task evidence retrieval
+- Transcript recurrence analysis
+- Historical project grounding
+
+## Meeting Intelligence
+- Transcript summarization
+- Commitment extraction
+- Blocker recurrence scoring
+
+---
+
+# 📂 Project Structure
+
+```bash
+CONSILIUM/
+│
+├── frontend/              # React frontend
+├── backend/               # FastAPI backend
+├── agents/                # LangGraph agent workflows
+├── integrations/          # GitHub + Meeting integrations
+├── monitoring/            # Monitoring loop & risk analysis
+├── rag/                   # FAISS & embeddings pipeline
+├── database/              # MongoDB models & schemas
+├── tests/                 # Automated tests
+└── docs/                  # Documentation
