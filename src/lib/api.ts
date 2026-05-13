@@ -15,6 +15,32 @@ const getBaseUrl = () => {
 
 export const apiBaseUrl = getBaseUrl();
 
+/**
+ * Default request headers for API calls. The `ngrok-skip-browser-warning`
+ * value is harmless against non-ngrok backends and prevents ngrok-free
+ * tunnels from returning the HTML interstitial page (which then fails
+ * .json() with "Unexpected token '<'").
+ */
+const defaultApiHeaders = (extra: Record<string, string> = {}): Record<string, string> => ({
+  "ngrok-skip-browser-warning": "true",
+  ...extra,
+});
+
+/**
+ * Parse a Response body as JSON or throw a helpful error that includes the
+ * URL and a snippet of the body when the response wasn't JSON (HTML 404,
+ * proxy interstitial, etc.).
+ */
+async function parseJsonOrThrow(res: Response, label: string): Promise<unknown> {
+  const text = await res.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    const snippet = text.slice(0, 120).replace(/\s+/g, " ");
+    throw new Error(`${label} returned non-JSON from ${res.url} (status ${res.status}): ${snippet}`);
+  }
+}
+
 export interface ApiUser {
   id: string;
   name: string;
@@ -34,17 +60,17 @@ export interface TokenResponse {
 export async function login(email: string, password: string): Promise<{ token: TokenResponse; user: ApiUser }> {
   const res = await fetch(`${apiBaseUrl}/api/v1/auth/login/json`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: defaultApiHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ email, password }),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
+    const err = (await parseJsonOrThrow(res, "login").catch(() => ({}))) as { detail?: unknown };
     const msg = Array.isArray(err.detail)
       ? err.detail.map((e: { msg?: string }) => e.msg).join(", ")
-      : (err.detail ?? "Login failed");
+      : (typeof err.detail === "string" ? err.detail : "Login failed");
     throw new Error(msg);
   }
-  const data = (await res.json()) as {
+  const data = (await parseJsonOrThrow(res, "login")) as {
     access_token?: string;
     token_type?: string;
     user?: ApiUser;
@@ -67,33 +93,33 @@ export async function forgotPassword(
 ): Promise<{ message: string; reset_token?: string; reset_url?: string }> {
   const res = await fetch(`${apiBaseUrl}/api/v1/auth/forgot-password`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: defaultApiHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ email }),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
+    const err = (await parseJsonOrThrow(res, "forgotPassword").catch(() => ({}))) as { detail?: unknown };
     const msg = Array.isArray(err.detail)
       ? err.detail.map((e: { msg?: string }) => e.msg).join(", ")
-      : (err.detail ?? "Request failed");
+      : (typeof err.detail === "string" ? err.detail : "Request failed");
     throw new Error(msg);
   }
-  return res.json();
+  return (await parseJsonOrThrow(res, "forgotPassword")) as { message: string; reset_token?: string; reset_url?: string };
 }
 
 export async function resetPassword(token: string, new_password: string): Promise<{ message: string }> {
   const res = await fetch(`${apiBaseUrl}/api/v1/auth/reset-password`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: defaultApiHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ token, new_password }),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
+    const err = (await parseJsonOrThrow(res, "resetPassword").catch(() => ({}))) as { detail?: unknown };
     const msg = Array.isArray(err.detail)
       ? err.detail.map((e: { msg?: string }) => e.msg).join(", ")
-      : (err.detail ?? "Reset failed");
+      : (typeof err.detail === "string" ? err.detail : "Reset failed");
     throw new Error(msg);
   }
-  return res.json();
+  return (await parseJsonOrThrow(res, "resetPassword")) as { message: string };
 }
 
 export async function register(data: {
@@ -106,26 +132,26 @@ export async function register(data: {
 }): Promise<ApiUser> {
   const res = await fetch(`${apiBaseUrl}/api/v1/auth/register`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: defaultApiHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(data),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail ?? "Registration failed");
+    const err = (await parseJsonOrThrow(res, "register").catch(() => ({}))) as { detail?: unknown };
+    throw new Error(typeof err.detail === "string" ? err.detail : "Registration failed");
   }
-  return res.json();
+  return (await parseJsonOrThrow(res, "register")) as ApiUser;
 }
 
 export async function fetchMe(token: string): Promise<ApiUser> {
   const res = await fetch(`${apiBaseUrl}/api/v1/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: getAuthHeaders(token),
   });
   if (!res.ok) throw new Error("Session expired");
-  return res.json();
+  return (await parseJsonOrThrow(res, "fetchMe")) as ApiUser;
 }
 
 export function getAuthHeaders(token: string): HeadersInit {
-  return { Authorization: `Bearer ${token}` };
+  return defaultApiHeaders({ Authorization: `Bearer ${token}` });
 }
 
 /** WebSocket base URL for live meeting transcript (ws or wss from API host). */
