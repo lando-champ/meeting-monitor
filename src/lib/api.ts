@@ -32,41 +32,34 @@ export interface TokenResponse {
 }
 
 export async function login(email: string, password: string): Promise<{ token: TokenResponse; user: ApiUser }> {
-  // #region agent log
-  fetch('http://127.0.0.1:7591/ingest/7e379b63-80c7-4857-8532-24c32abcd730',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b7ceec'},body:JSON.stringify({sessionId:'b7ceec',runId:'login-investigation-1',hypothesisId:'H1',location:'api.ts:login:start',message:'frontend login start',data:{hasApiBaseUrl:apiBaseUrl.length>0,emailLen:email.trim().length},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   const res = await fetch(`${apiBaseUrl}/api/v1/auth/login/json`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
-  // #region agent log
-  fetch('http://127.0.0.1:7591/ingest/7e379b63-80c7-4857-8532-24c32abcd730',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b7ceec'},body:JSON.stringify({sessionId:'b7ceec',runId:'login-investigation-1',hypothesisId:'H2',location:'api.ts:login:response',message:'frontend login response',data:{status:res.status,ok:res.ok},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    // #region agent log
-    fetch('http://127.0.0.1:7591/ingest/7e379b63-80c7-4857-8532-24c32abcd730',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b7ceec'},body:JSON.stringify({sessionId:'b7ceec',runId:'login-investigation-1',hypothesisId:'H3',location:'api.ts:login:error',message:'frontend login non-200',data:{detailType:typeof err?.detail,hasDetail:Boolean(err?.detail)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    const msg = Array.isArray(err.detail) ? err.detail.map((e: { msg?: string }) => e.msg).join(", ") : (err.detail ?? "Login failed");
+    const msg = Array.isArray(err.detail)
+      ? err.detail.map((e: { msg?: string }) => e.msg).join(", ")
+      : (err.detail ?? "Login failed");
     throw new Error(msg);
   }
   const data = (await res.json()) as {
-    access_token: string;
+    access_token?: string;
     token_type?: string;
     user?: ApiUser;
   };
-  // #region agent log
-  fetch('http://127.0.0.1:7591/ingest/7e379b63-80c7-4857-8532-24c32abcd730',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b7ceec'},body:JSON.stringify({sessionId:'b7ceec',runId:'login-investigation-1',hypothesisId:'H4',location:'api.ts:login:payload',message:'frontend login payload parsed',data:{hasAccessToken:Boolean(data?.access_token),hasUser:Boolean(data?.user),tokenType:data?.token_type??null},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   if (!data?.access_token) throw new Error("Invalid login response");
-  if (!data.user) throw new Error("Login response missing user payload");
 
   const token: TokenResponse = {
     access_token: data.access_token,
     token_type: data.token_type ?? "bearer",
   };
-  return { token, user: data.user };
+
+  // Use inline user payload when the backend returns it (meeting-monitor /api/v1/auth/login/json);
+  // otherwise fetch the profile separately (works against backends that only return the token).
+  const user = data.user ?? (await fetchMe(token.access_token));
+  return { token, user };
 }
 
 export async function forgotPassword(
